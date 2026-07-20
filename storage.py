@@ -7,7 +7,11 @@
 """
 import json
 import os
+import threading
 from datetime import date, timedelta
+
+# 后台线程和主线程可能同时写，加把锁防止互相踩
+_write_lock = threading.Lock()
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 BOOK_FILE = os.path.join(BASE_DIR, "vocab_book.json")
@@ -78,14 +82,15 @@ def _load_dict(ws_name, local_file):
 
 def _save_dict(data, ws_name, local_file):
     """写回整份数据（数据量在几千词以内，整表重写最简单可靠）"""
-    if _get_sheet() is None:
-        with open(local_file, "w", encoding="utf-8") as f:
-            json.dump(data, f, ensure_ascii=False, indent=2)
-        return
-    ws = _ws(ws_name)
-    rows = [_HEADER] + [[k, json.dumps(v, ensure_ascii=False)] for k, v in data.items()]
-    ws.clear()
-    ws.update(rows, "A1")
+    with _write_lock:
+        if _get_sheet() is None:
+            with open(local_file, "w", encoding="utf-8") as f:
+                json.dump(data, f, ensure_ascii=False, indent=2)
+            return
+        ws = _ws(ws_name)
+        rows = [_HEADER] + [[k, json.dumps(v, ensure_ascii=False)] for k, v in data.items()]
+        ws.clear()
+        ws.update(rows, "A1")
 
 
 # ============ 单词本 ============

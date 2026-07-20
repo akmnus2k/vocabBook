@@ -2,10 +2,12 @@
 """PT 单词本：查词（联想）→ 收藏 → 复习 → 场景练习，附搜索历史"""
 import random
 import re
+import threading
 from datetime import date
 
 import pandas as pd
 import streamlit as st
+import streamlit.components.v1 as components
 from streamlit_searchbox import st_searchbox
 
 import dict_api
@@ -82,6 +84,18 @@ def cached_pt_sentences(word):
     return dict_api.pt_sentences(word)
 
 
+def sound_button(word, label="🔊"):
+    """一点就发音的小按钮（在浏览器里直接播放，不用等服务器）"""
+    url = dict_api.audio_url(word)
+    components.html(
+        f"""<button onclick="new Audio('{url}').play()"
+             style="background:#E9F3F8;border:1px solid #A8D4EA;border-radius:10px;
+                    padding:6px 14px;font-size:17px;cursor:pointer;width:100%">
+             {label}</button>""",
+        height=44,
+    )
+
+
 def cloze(sentence, word):
     """把句子里的目标单词挖成空（连带复数等变形一起挖）"""
     return re.sub(rf"\b{re.escape(word)}\w*", "＿＿＿＿", sentence, flags=re.I)
@@ -117,7 +131,8 @@ with tab_search:
     # 搜索框有新选择时，切换到这个词（历史记录里点词也会切换，见下面）
     if selected and selected != st.session_state.get("prev_search"):
         st.session_state.prev_search = selected
-        st.session_state.view_word = selected
+        # 统一转小写，避免 Anesthesia / anesthesia 记成两个词（全大写缩写词除外）
+        st.session_state.view_word = selected if selected.isupper() else selected.lower()
 
     target = st.session_state.get("view_word")
 
@@ -128,15 +143,18 @@ with tab_search:
         if not info["found"]:
             st.warning(f"没有查到「{target}」，检查一下拼写？")
         else:
-            # 自动记入搜索历史（同一个词一次会话只记一笔）
+            # 自动记入搜索历史（后台写入，不拖慢界面；同一个词一次会话只记一笔）
             if st.session_state.get("hist_recorded") != target:
                 brief = info["defs"][0] if info["defs"] else ""
-                storage.record_history(history, info["word"], brief)
+                threading.Thread(
+                    target=storage.record_history,
+                    args=(history, info["word"], brief), daemon=True,
+                ).start()
                 st.session_state.hist_recorded = target
 
             st.subheader(info["word"])
 
-            # 音标 + 发音
+            # 音标
             phones = []
             if info["phone_us"]:
                 phones.append(f"美 /{info['phone_us']}/")
@@ -144,7 +162,25 @@ with tab_search:
                 phones.append(f"英 /{info['phone_uk']}/")
             if phones:
                 st.caption("　".join(phones))
-            st.audio(dict_api.audio_url(info["word"]), format="audio/mpeg")
+
+            # 发音 + 收藏放最上面，手机上一眼就能点到
+            c_snd, c_fav = st.columns([1, 3])
+            with c_snd:
+                sound_button(info["word"])
+            with c_fav:
+                if info["word"] in book:
+                    if st.button("💚 已收藏（点击移除）", use_container_width=True):
+                        storage.remove_word(book, info["word"])
+                        st.rerun()
+                else:
+                    if st.button("⭐ 收藏到单词本", type="primary",
+                                 use_container_width=True):
+                        imgs_for_save = cached_images(
+                            info["word"], img_context(info),
+                            st.session_state.get(f"img_first_{target}", 1))
+                        storage.add_word(book, info, imgs_for_save)
+                        st.toast(f"「{info['word']}」已收藏！", icon="⭐")
+                        st.rerun()
 
             # 中文释义
             st.markdown("#### 释义")
@@ -176,20 +212,6 @@ with tab_search:
                         st.image(url, use_container_width=True)
                 if st.button("🔄 换一批图片"):
                     st.session_state[f"img_first_{target}"] = first + 12
-                    st.rerun()
-
-            st.divider()
-
-            # 收藏 / 已收藏
-            if info["word"] in book:
-                st.success("✅ 已在单词本里")
-                if st.button("从单词本移除"):
-                    storage.remove_word(book, info["word"])
-                    st.rerun()
-            else:
-                if st.button("⭐ 收藏到单词本", type="primary"):
-                    storage.add_word(book, info, imgs)
-                    st.toast(f"「{info['word']}」已收藏！", icon="⭐")
                     st.rerun()
 
     # 搜索历史：查过的词都在这里，点一下就能回看
@@ -240,24 +262,27 @@ with tab_book:
         )
 
         st.divider()
-        # 最新收藏的排在前面
+        # 最新收藏的排在前面；每行：词条折叠卡 + 一点就响的发音按钮
         for e in sorted(book.values(), key=lambda x: x["added"], reverse=True):
             stars = "🌟" * e["level"] + "☆" * (len(storage.INTERVALS) - 1 - e["level"])
-            with st.expander(f"**{e['word']}**　{e['defs'][0] if e['defs'] else ''}"):
-                if e.get("phone_us"):
-                    st.caption(f"美 /{e['phone_us']}/")
-                st.audio(dict_api.audio_url(e["word"]), format="audio/mpeg")
-                for d in e["defs"]:
-                    st.markdown(f"- {d}")
-                for d in e.get("en_defs", []):
-                    st.markdown(f"- *{d}*")
-                for ex in e.get("examples", [])[:2]:
-                    st.markdown(f"**{ex['en']}**")
-                    st.caption(ex["zh"])
-                st.caption(f"熟练度 {stars}　|　收藏于 {e['added']}　|　下次复习 {e['next_review']}")
-                if st.button("移除", key=f"del_{e['word']}"):
-                    storage.remove_word(book, e["word"])
-                    st.rerun()
+            c_word, c_snd = st.columns([5, 1])
+            with c_snd:
+                sound_button(e["word"])
+            with c_word:
+                with st.expander(f"**{e['word']}**　{e['defs'][0] if e['defs'] else ''}"):
+                    if e.get("phone_us"):
+                        st.caption(f"美 /{e['phone_us']}/")
+                    for d in e["defs"]:
+                        st.markdown(f"- {d}")
+                    for d in e.get("en_defs", []):
+                        st.markdown(f"- *{d}*")
+                    for ex in e.get("examples", [])[:2]:
+                        st.markdown(f"**{ex['en']}**")
+                        st.caption(ex["zh"])
+                    st.caption(f"熟练度 {stars}　|　收藏于 {e['added']}　|　下次复习 {e['next_review']}")
+                    if st.button("移除", key=f"del_{e['word']}"):
+                        storage.remove_word(book, e["word"])
+                        st.rerun()
 
 
 # ============ 复习 ============
@@ -292,7 +317,9 @@ with tab_review:
                     text=f"进度 {st.session_state.review_done} / {st.session_state.review_total}")
 
         st.markdown(f"## {w}")
-        st.audio(dict_api.audio_url(w), format="audio/mpeg")
+        c_snd, _ = st.columns([1, 3])
+        with c_snd:
+            sound_button(w, "🔊 发音")
 
         if not st.session_state.show_answer:
             if st.button("👀 显示答案", type="primary", use_container_width=True):
@@ -365,7 +392,9 @@ with tab_practice:
         st.divider()
         st.markdown("#### 🗣️ 用英文解释挑战")
         st.markdown(f"想象你在向同事或病人解释 **{pw_word}**——先自己用英文说一遍，再对照参考：")
-        st.audio(dict_api.audio_url(pw_word), format="audio/mpeg")
+        c_snd, _ = st.columns([1, 3])
+        with c_snd:
+            sound_button(pw_word, "🔊 发音")
         with st.expander("对照参考答案"):
             en_defs = entry.get("en_defs") or cached_lookup(pw_word).get("en_defs", [])
             for d in en_defs:

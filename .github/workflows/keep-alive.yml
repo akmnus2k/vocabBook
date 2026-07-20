@@ -13,6 +13,5 @@ jobs:
     steps:
       - name: Ping the app
         run: |
-          # ↓↓↓ 把这里换成你的应用网址 ↓↓↓
-          APP_URL="https://REPLACE-ME.streamlit.app"
+          APP_URL="https://pt-dclc.streamlit.app"
           curl -sL -c /tmp/cookies.txt -b /tmp/cookies.txt --max-time 60 "$APP_URL" -o /dev/null -w "HTTP %{http_code}\n" || true

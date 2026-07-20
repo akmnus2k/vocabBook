@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
-"""PT 单词本：查词（联想）→ 收藏 → 复习，附搜索历史"""
+"""PT 单词本：查词（联想）→ 收藏 → 复习 → 场景练习，附搜索历史"""
 import random
+import re
 from datetime import date
 
 import pandas as pd
@@ -48,6 +49,23 @@ def cached_images(word):
     return dict_api.get_images(word, n=3)
 
 
+# PT 场景例句一天内不会变，缓存久一点
+@st.cache_data(ttl=86400, show_spinner=False)
+def cached_pt_sentences(word):
+    return dict_api.pt_sentences(word)
+
+
+def cloze(sentence, word):
+    """把句子里的目标单词挖成空（连带复数等变形一起挖）"""
+    return re.sub(rf"\b{re.escape(word)}\w*", "＿＿＿＿", sentence, flags=re.I)
+
+
+def highlight(sentence, word):
+    """把句子里的目标单词加粗"""
+    return re.sub(rf"\b{re.escape(word)}\w*", lambda m: f"**{m.group(0)}**",
+                  sentence, flags=re.I)
+
+
 # 单词本和搜索历史整个会话只从存储读一次，之后在内存里改、随手写回存储
 if "book" not in st.session_state:
     st.session_state.book = storage.load_book()
@@ -57,7 +75,8 @@ book = st.session_state.book
 history = st.session_state.history
 
 st.title("📘 PT 单词本")
-tab_search, tab_book, tab_review = st.tabs(["🔍 查单词", "📒 我的单词本", "🌱 复习"])
+tab_search, tab_book, tab_review, tab_practice = st.tabs(
+    ["🔍 查单词", "📒 我的单词本", "🌱 复习", "🎯 场景练习"])
 
 
 # ============ 查单词 ============
@@ -282,3 +301,43 @@ with tab_review:
             for k in ("review_queue", "review_total", "review_done", "show_answer"):
                 st.session_state.pop(k, None)
             st.rerun()
+
+
+# ============ 场景练习 ============
+with tab_practice:
+    if not book:
+        st.info("先去收藏一些单词，才能开始场景练习哦～")
+    else:
+        pw_word = st.selectbox("选一个单词来练习", sorted(book.keys()))
+        entry = book[pw_word]
+
+        # —— 练习一：PT 场景填空 ——
+        st.markdown("#### ✍️ PT 场景填空")
+        st.caption("下面是这个词在物理治疗/康复场景里的真实句子，先看中文提示，想想空里填什么")
+        with st.spinner("正在找 PT 场景例句..."):
+            sents = cached_pt_sentences(pw_word)
+        if not sents:  # 搜不到场景句就用收藏时存的普通例句
+            sents = entry.get("examples", [])
+
+        if not sents:
+            st.info("这个词暂时没找到合适的例句，试试别的词～")
+        else:
+            for i, ex in enumerate(sents[:5], 1):
+                st.markdown(f"{i}. {cloze(ex['en'], pw_word)}")
+                st.caption(ex["zh"])
+            if st.toggle("👀 显示原句", key="show_cloze_answer"):
+                st.divider()
+                for i, ex in enumerate(sents[:5], 1):
+                    st.markdown(f"{i}. {highlight(ex['en'], pw_word)}")
+
+        # —— 练习二：用英文解释 ——
+        st.divider()
+        st.markdown("#### 🗣️ 用英文解释挑战")
+        st.markdown(f"想象你在向同事或病人解释 **{pw_word}**——先自己用英文说一遍，再对照参考：")
+        st.audio(dict_api.audio_url(pw_word), format="audio/mpeg")
+        with st.expander("对照参考答案"):
+            en_defs = entry.get("en_defs") or cached_lookup(pw_word).get("en_defs", [])
+            for d in en_defs:
+                st.markdown(f"- *{d}*")
+            for d in entry.get("defs", []):
+                st.markdown(f"- {d}")

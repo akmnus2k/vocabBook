@@ -1,0 +1,18 @@
+# 每 4 小时访问一次应用，防止 Streamlit 免费版因闲置 12 小时而睡眠
+# （睡眠后打开要冷启动几十秒，这就是"打开慢"的主因）
+name: Keep app awake
+
+on:
+  schedule:
+    - cron: "0 */4 * * *"   # 每 4 小时一次（UTC 时间）
+  workflow_dispatch:         # 也可以在 Actions 页面手动触发
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping the app
+        run: |
+          # ↓↓↓ 把这里换成你的应用网址 ↓↓↓
+          APP_URL="https://REPLACE-ME.streamlit.app"
+          curl -sL -c /tmp/cookies.txt -b /tmp/cookies.txt --max-time 60 "$APP_URL" -o /dev/null -w "HTTP %{http_code}\n" || true

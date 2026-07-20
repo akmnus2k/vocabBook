@@ -90,6 +90,33 @@ def lookup(word: str) -> dict:
     return info
 
 
+PT_CONTEXTS = ["physical therapy", "rehabilitation", "patient", "clinical"]
+
+
+def pt_sentences(word: str, limit: int = 5):
+    """搜索单词在 PT/康复语境下的双语例句（用 "单词+场景词" 去搜例句库）"""
+    seen, results = set(), []
+    for ctx in PT_CONTEXTS:
+        try:
+            r = requests.get(
+                "https://dict.youdao.com/jsonapi",
+                params={"q": f"{word} {ctx}"}, headers=HEADERS, timeout=8,
+            )
+            pairs = r.json().get("blng_sents_part", {}).get("sentence-pair", [])
+        except Exception:
+            continue
+        for s in pairs:
+            en = s.get("sentence", "")
+            zh = s.get("sentence-translation", "")
+            # 只要真正包含目标单词的句子，去重后收集
+            if en and zh and en not in seen and word.lower() in en.lower():
+                seen.add(en)
+                results.append({"en": en, "zh": zh})
+                if len(results) >= limit:
+                    return results
+    return results
+
+
 def get_images(word: str, n: int = 3):
     """从必应图片搜索抓取前几张相关图片的地址"""
     try:

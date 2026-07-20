@@ -260,20 +260,41 @@ with tab_search:
 
 
 # ============ 我的单词本 ============
-with tab_book:
-    c1, c2, c3 = st.columns([2, 2, 1])
-    c1.metric("收藏总数", len(book))
-    c2.metric("今日待复习", len(storage.due_words(book)))
-    if c3.button("🔄 刷新"):
-        # 手机和电脑同时在用时，点这里拉取最新数据
-        st.session_state.book = storage.load_book()
-        st.session_state.history = storage.load_history()
+
+@st.dialog("词条详情")
+def word_detail_dialog(e):
+    """点 ⋮ 弹出的内页：完整释义 + 例句 + 移除"""
+    clickable_word(e["word"], sub="点我发音", size=24)
+    if e.get("phone_us"):
+        st.caption(f"美 /{e['phone_us']}/")
+    for d in e["defs"]:
+        st.markdown(f"- {d}")
+    for d in e.get("en_defs", []):
+        st.markdown(f"- *{d}*")
+    for ex in e.get("examples", [])[:2]:
+        st.markdown(f"**{ex['en']}**")
+        st.caption(ex["zh"])
+    stars = "🌟" * e["level"] + "☆" * (len(storage.INTERVALS) - 1 - e["level"])
+    st.caption(f"熟练度 {stars}　|　收藏于 {e['added']}　|　下次复习 {e['next_review']}")
+    if st.button("🗑️ 从单词本移除", use_container_width=True):
+        storage.remove_word(book, e["word"])
         st.rerun()
 
+
+with tab_book:
     if not book:
         st.info("单词本还是空的，去「查单词」页收藏几个吧～")
+        if st.button("🔄 刷新"):
+            st.session_state.book = storage.load_book()
+            st.session_state.history = storage.load_history()
+            st.rerun()
     else:
-        # 备份下载
+        # 第一行：两个统计数字
+        c1, c2 = st.columns(2)
+        c1.markdown(f"📚 共 **{len(book)}** 个单词")
+        c2.markdown(f"🌱 今日待复习 **{len(storage.due_words(book))}**")
+
+        # 第二行：刷新 + 导出
         df = pd.DataFrame(
             [{
                 "单词": e["word"],
@@ -283,50 +304,46 @@ with tab_book:
                 "下次复习": e["next_review"],
             } for e in book.values()]
         )
-        st.download_button(
-            "⬇️ 导出单词本 (CSV)",
+        b1, b2 = st.columns(2)
+        if b1.button("🔄 刷新", use_container_width=True):
+            # 手机和电脑同时在用时，点这里拉取最新数据
+            st.session_state.book = storage.load_book()
+            st.session_state.history = storage.load_history()
+            st.rerun()
+        b2.download_button(
+            "⬇️ 导出 CSV",
             df.to_csv(index=False).encode("utf-8-sig"),
             file_name=f"单词本_{date.today().isoformat()}.csv",
+            use_container_width=True,
         )
 
-        st.divider()
-
-        # 排序方式
-        sort_by = st.radio(
-            "排序", ["🕐 按添加时间", "🔤 按首字母", "🌱 按熟练度"],
+        # 第三行：排序方式 + 正序/倒序
+        s1, s2 = st.columns([3, 1])
+        sort_by = s1.radio(
+            "排序", ["🕐 时间", "🔤 字母", "🌱 熟练度"],
             horizontal=True, label_visibility="collapsed",
         )
-        if sort_by == "🔤 按首字母":
+        desc = s2.toggle("倒序", value=(sort_by == "🕐 时间"))
+
+        if sort_by == "🔤 字母":
             entries = sorted(book.values(), key=lambda x: x["word"].lower())
-        elif sort_by == "🌱 按熟练度":
+        elif sort_by == "🌱 熟练度":
             entries = sorted(book.values(),
                              key=lambda x: (x.get("level", 0), x["word"].lower()))
-        else:  # 按添加时间，最新的在前
-            entries = sorted(book.values(), key=lambda x: x["added"], reverse=True)
+        else:  # 时间正序 = 早收藏的在前；倒序 = 最新的在前
+            entries = sorted(book.values(), key=lambda x: x["added"])
+        if desc:
+            entries = entries[::-1]
 
-        # 每行：点单词发音 + 「详情」看释义
+        # 每行：点单词发音，点 ⋮ 看详情
         for e in entries:
-            stars = "🌟" * e["level"] + "☆" * (len(storage.INTERVALS) - 1 - e["level"])
-            c_word, c_more = st.columns([5, 1])
+            c_word, c_more = st.columns([8, 1])
             with c_word:
                 clickable_word(e["word"],
-                               sub=e["defs"][0] if e["defs"] else "", size=20)
+                               sub=e["defs"][0] if e["defs"] else "", size=19)
             with c_more:
-                with st.popover("详情"):
-                    if e.get("phone_us"):
-                        st.caption(f"美 /{e['phone_us']}/")
-                    for d in e["defs"]:
-                        st.markdown(f"- {d}")
-                    for d in e.get("en_defs", []):
-                        st.markdown(f"- *{d}*")
-                    for ex in e.get("examples", [])[:2]:
-                        st.markdown(f"**{ex['en']}**")
-                        st.caption(ex["zh"])
-                    st.caption(f"熟练度 {stars}")
-                    st.caption(f"收藏于 {e['added']}　下次复习 {e['next_review']}")
-                    if st.button("移除", key=f"del_{e['word']}"):
-                        storage.remove_word(book, e["word"])
-                        st.rerun()
+                if st.button("⋮", key=f"more_{e['word']}"):
+                    word_detail_dialog(e)
 
 
 # ============ 复习 ============

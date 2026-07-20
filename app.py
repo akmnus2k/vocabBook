@@ -16,6 +16,22 @@ import storage
 
 st.set_page_config(page_title="PT 单词本", page_icon="📗", layout="centered")
 
+# 手机上 Streamlit 默认把并排的列堆成竖排，这里强制保持横排（否则按钮各占一行太浪费空间）
+st.markdown("""
+<style>
+@media (max-width: 640px) {
+    div[data-testid="stHorizontalBlock"] {
+        flex-direction: row !important;
+        flex-wrap: nowrap !important;
+        gap: 0.5rem !important;
+    }
+    div[data-testid="stHorizontalBlock"] > div[data-testid="stColumn"] {
+        min-width: 0 !important;
+    }
+}
+</style>
+""", unsafe_allow_html=True)
+
 
 # ============ 访问密码（在 secrets.toml 里配 app_password，不配就不要密码） ============
 def check_password() -> bool:
@@ -140,6 +156,52 @@ if "history" not in st.session_state:
 book = st.session_state.book
 history = st.session_state.history
 
+
+@st.dialog("词条详情")
+def word_detail_dialog():
+    """单词本里点 ⋮ 弹出的内页，左右按钮切换上一个/下一个单词"""
+    words = st.session_state.get("dlg_words", [])
+    idx = max(0, min(st.session_state.get("dlg_idx", 0), len(words) - 1))
+    e = book.get(words[idx]) if words else None
+    if e is None:
+        st.info("这个词已经不在单词本里了")
+        return
+
+    # 左右切换
+    nav_l, nav_mid, nav_r = st.columns([1, 2, 1])
+    if nav_l.button("⬅️", disabled=(idx == 0), use_container_width=True):
+        st.session_state.dlg_idx = idx - 1
+        st.session_state.dlg_open = True
+        st.rerun()
+    nav_mid.markdown(
+        f"<div style='text-align:center;color:#7A8B96;padding-top:6px'>"
+        f"{idx + 1} / {len(words)}</div>", unsafe_allow_html=True)
+    if nav_r.button("➡️", disabled=(idx == len(words) - 1), use_container_width=True):
+        st.session_state.dlg_idx = idx + 1
+        st.session_state.dlg_open = True
+        st.rerun()
+
+    clickable_word(e["word"], sub="点我发音", size=24)
+    if e.get("phone_us"):
+        st.caption(f"美 /{e['phone_us']}/")
+    for d in e["defs"]:
+        st.markdown(f"- {d}")
+    for d in e.get("en_defs", []):
+        st.markdown(f"- *{d}*")
+    for ex in e.get("examples", [])[:2]:
+        st.markdown(f"**{ex['en']}**")
+        st.caption(ex["zh"])
+    stars = "🌟" * e["level"] + "☆" * (len(storage.INTERVALS) - 1 - e["level"])
+    st.caption(f"熟练度 {stars}　|　收藏于 {e['added']}　|　下次复习 {e['next_review']}")
+    if st.button("🗑️ 从单词本移除", use_container_width=True):
+        storage.remove_word(book, e["word"])
+        st.rerun()
+
+
+# 弹窗采用"一次性标记"：内页里点了左右切换会重新打开；点 X 关闭就真的关掉
+if st.session_state.pop("dlg_open", False):
+    word_detail_dialog()
+
 st.title("📗 PT 单词本")
 tab_search, tab_book, tab_review, tab_practice = st.tabs(
     ["🔍 查单词", "📒 我的单词本", "🌱 复习", "🎯 场景练习"])
@@ -260,27 +322,6 @@ with tab_search:
 
 
 # ============ 我的单词本 ============
-
-@st.dialog("词条详情")
-def word_detail_dialog(e):
-    """点 ⋮ 弹出的内页：完整释义 + 例句 + 移除"""
-    clickable_word(e["word"], sub="点我发音", size=24)
-    if e.get("phone_us"):
-        st.caption(f"美 /{e['phone_us']}/")
-    for d in e["defs"]:
-        st.markdown(f"- {d}")
-    for d in e.get("en_defs", []):
-        st.markdown(f"- *{d}*")
-    for ex in e.get("examples", [])[:2]:
-        st.markdown(f"**{ex['en']}**")
-        st.caption(ex["zh"])
-    stars = "🌟" * e["level"] + "☆" * (len(storage.INTERVALS) - 1 - e["level"])
-    st.caption(f"熟练度 {stars}　|　收藏于 {e['added']}　|　下次复习 {e['next_review']}")
-    if st.button("🗑️ 从单词本移除", use_container_width=True):
-        storage.remove_word(book, e["word"])
-        st.rerun()
-
-
 with tab_book:
     if not book:
         st.info("单词本还是空的，去「查单词」页收藏几个吧～")
@@ -289,10 +330,9 @@ with tab_book:
             st.session_state.history = storage.load_history()
             st.rerun()
     else:
-        # 第一行：两个统计数字
-        c1, c2 = st.columns(2)
-        c1.markdown(f"📚 共 **{len(book)}** 个单词")
-        c2.markdown(f"🌱 今日待复习 **{len(storage.due_words(book))}**")
+        # 第一行：统计（一行小字）
+        st.markdown(f"📚 共 **{len(book)}** 个单词　·　"
+                    f"🌱 今日待复习 **{len(storage.due_words(book))}**")
 
         # 第二行：刷新 + 导出
         df = pd.DataFrame(
@@ -335,15 +375,19 @@ with tab_book:
         if desc:
             entries = entries[::-1]
 
-        # 每行：点单词发音，点 ⋮ 看详情
-        for e in entries:
+        # 每行：点单词发音，点 ⋮ 打开详情内页（内页里可以左右切换单词）
+        sorted_words = [e["word"] for e in entries]
+        for i, e in enumerate(entries):
             c_word, c_more = st.columns([8, 1])
             with c_word:
                 clickable_word(e["word"],
                                sub=e["defs"][0] if e["defs"] else "", size=19)
             with c_more:
                 if st.button("⋮", key=f"more_{e['word']}"):
-                    word_detail_dialog(e)
+                    st.session_state.dlg_words = sorted_words
+                    st.session_state.dlg_idx = i
+                    st.session_state.dlg_open = True
+                    st.rerun()
 
 
 # ============ 复习 ============

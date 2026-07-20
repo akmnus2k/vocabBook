@@ -1,0 +1,6 @@
+# 浅蓝主题
+[theme]
+primaryColor = "#A8D4EA"              # 主色：浅蓝
+backgroundColor = "#F7FBFD"           # 页面底色：近白的淡蓝
+secondaryBackgroundColor = "#E9F3F8"  # 侧边栏和输入框底色
+textColor = "#3D4F5C"                 # 文字：柔和的蓝灰

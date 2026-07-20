@@ -1,0 +1,10 @@
+# 密钥绝对不能上传！（部署时在 Streamlit Cloud 后台单独粘贴）
+.streamlit/secrets.toml
+
+# 本地数据文件（云端用 Google Sheets，不需要这些）
+vocab_book.json
+search_history.json
+
+# Python 缓存
+__pycache__/
+*.pyc

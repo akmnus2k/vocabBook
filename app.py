@@ -71,6 +71,34 @@ MED_KEYWORDS = [
 ]
 
 
+# 有道释义里的医学类标签，如 [医] [外科] [解剖]
+MED_TAG_RE = re.compile(r"\[(医|外科|解剖|生理|病理|药|内科|临床|口腔)[^\]]*\]")
+
+
+def _is_med(text):
+    """判断一段释义是否跟医学/康复相关"""
+    return bool(MED_TAG_RE.search(text)) or any(k in text for k in MED_KEYWORDS)
+
+
+def simplify_def(d, max_segs=3):
+    """精简一条释义：医学义项排前面，只保留最常用的几个义项，去掉标签"""
+    pos_m = re.match(r"^\s*([a-z]+\.)", d)
+    pos = pos_m.group(1) + " " if pos_m else ""
+    body = re.sub(r"^\s*[a-z]+\.\s*", "", d)
+    body = re.sub(r"\[.*?\]", "", body)
+    segs = [s.strip() for s in re.split(r"[；;]", body) if s.strip()]
+    med = [s for s in segs if _is_med(s)]
+    rest = [s for s in segs if s not in med]
+    picked = (med + rest)[:max_segs]
+    return (pos + "；".join(picked)) if picked else d
+
+
+def concise_defs(defs, n=2):
+    """整体精简：医学相关的整条释义排前面，最多取 n 条，逐条精简"""
+    ordered = sorted(defs, key=lambda d: 0 if _is_med(d) else 1)
+    return [simplify_def(d) for d in ordered[:n]]
+
+
 def img_context(info):
     """从中文释义里挑一小段当图片搜索的附加词，帮助搜索引擎消歧义
 
@@ -184,11 +212,11 @@ def word_detail_dialog():
     clickable_word(e["word"], sub="点我发音", size=24)
     if e.get("phone_us"):
         st.caption(f"美 /{e['phone_us']}/")
-    for d in e["defs"]:
+    for d in concise_defs(e["defs"]):
         st.markdown(f"- {d}")
-    for d in e.get("en_defs", []):
-        st.markdown(f"- *{d}*")
-    for ex in e.get("examples", [])[:2]:
+    if e.get("en_defs"):
+        st.markdown(f"🗣️ *{e['en_defs'][0]}*")
+    for ex in e.get("examples", [])[:1]:
         st.markdown(f"**{ex['en']}**")
         st.caption(ex["zh"])
     stars = "🌟" * e["level"] + "☆" * (len(storage.INTERVALS) - 1 - e["level"])
@@ -234,7 +262,7 @@ with tab_search:
         else:
             # 自动记入搜索历史（后台写入，不拖慢界面；同一个词一次会话只记一笔）
             if st.session_state.get("hist_recorded") != target:
-                brief = info["defs"][0] if info["defs"] else ""
+                brief = simplify_def(info["defs"][0], 2) if info["defs"] else ""
                 threading.Thread(
                     target=storage.record_history,
                     args=(history, info["word"], brief), daemon=True,
@@ -268,24 +296,33 @@ with tab_search:
                     st.toast(f"「{info['word']}」已收藏！", icon="⭐")
                     st.rerun()
 
-            # 中文释义
+            # 释义走"极简"路线：医学义项优先、最多两条，其余收进折叠区
             st.markdown("#### 释义")
-            for d in info["defs"]:
+            for d in concise_defs(info["defs"]):
                 st.markdown(f"- {d}")
 
-            # 英文释义（上班时用英文向同事/病人解释就靠它）
-            # 用 .get 安全取值：升级前的旧缓存结果里可能没有这个字段
+            # 英文释义只显示一条（上班时用英文解释就靠它）
             if info.get("en_defs"):
-                st.markdown("#### 英文释义 English Definition")
-                for d in info.get("en_defs", []):
-                    st.markdown(f"- *{d}*")
+                st.markdown(f"🗣️ *{info['en_defs'][0]}*")
 
-            # 双语例句
+            # 例句只显示一条
             if info["examples"]:
-                st.markdown("#### 例句 · 应用场景")
-                for ex in info["examples"]:
-                    st.markdown(f"**{ex['en']}**")
-                    st.caption(ex["zh"])
+                ex = info["examples"][0]
+                st.markdown(f"**{ex['en']}**")
+                st.caption(ex["zh"])
+
+            # 完整内容想看再展开
+            has_more = (len(info["defs"]) > 2 or len(info.get("en_defs", [])) > 1
+                        or len(info["examples"]) > 1)
+            if has_more:
+                with st.expander("📖 更多释义与例句"):
+                    for d in info["defs"]:
+                        st.markdown(f"- {d}")
+                    for d in info.get("en_defs", [])[1:]:
+                        st.markdown(f"- *{d}*")
+                    for ex in info["examples"][1:]:
+                        st.markdown(f"**{ex['en']}**")
+                        st.caption(ex["zh"])
 
             # 相关图片（带上中文释义一起搜，图片更贴合词义）
             first = st.session_state.get(f"img_first_{target}", 1)
@@ -381,7 +418,8 @@ with tab_book:
             c_word, c_more = st.columns([8, 1])
             with c_word:
                 clickable_word(e["word"],
-                               sub=e["defs"][0] if e["defs"] else "", size=19)
+                               sub=simplify_def(e["defs"][0], 2) if e["defs"] else "",
+                               size=19)
             with c_more:
                 if st.button("⋮", key=f"more_{e['word']}"):
                     st.session_state.dlg_words = sorted_words
@@ -430,9 +468,9 @@ with tab_review:
                 st.session_state.show_answer = True
                 st.rerun()
         else:
-            for d in entry["defs"]:
+            for d in concise_defs(entry["defs"]):
                 st.markdown(f"- {d}")
-            for d in entry.get("en_defs", [])[:2]:
+            for d in entry.get("en_defs", [])[:1]:
                 st.markdown(f"- *{d}*")
             if entry.get("examples"):
                 ex = entry["examples"][0]

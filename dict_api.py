@@ -36,7 +36,7 @@ def lookup(word: str) -> dict:
     """查询单词详情：音标、中文释义、双语例句"""
     info = {
         "word": word, "phone_us": "", "phone_uk": "",
-        "defs": [], "examples": [], "found": False,
+        "defs": [], "en_defs": [], "examples": [], "found": False,
     }
     try:
         r = requests.get(
@@ -68,6 +68,16 @@ def lookup(word: str) -> dict:
         tran = d.get("fanyi", {}).get("tran")
         if tran:
             info["defs"].append(tran)
+
+    # 英英释义（WordNet 词典，用英文解释单词）
+    for tr_group in d.get("ee", {}).get("word", {}).get("trs", []):
+        pos = tr_group.get("pos", "")
+        for t in tr_group.get("tr", []):
+            i = t.get("l", {}).get("i", "")
+            if isinstance(i, list):  # 个别词条 i 是列表
+                i = i[0] if i else ""
+            if i:
+                info["en_defs"].append(f"{pos} {i}".strip())
 
     # 双语例句（应用场景）
     for s in d.get("blng_sents_part", {}).get("sentence-pair", [])[:5]:

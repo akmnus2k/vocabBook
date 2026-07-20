@@ -106,6 +106,7 @@ def add_word(book: dict, info: dict, images: list):
         "phone_us": info.get("phone_us", ""),
         "phone_uk": info.get("phone_uk", ""),
         "defs": info.get("defs", []),
+        "en_defs": info.get("en_defs", []),
         "examples": info.get("examples", []),
         "images": images,
         "added": today,

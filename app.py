@@ -105,6 +105,12 @@ with tab_search:
             for d in info["defs"]:
                 st.markdown(f"- {d}")
 
+            # 英文释义（上班时用英文向同事/病人解释就靠它）
+            if info["en_defs"]:
+                st.markdown("#### 英文释义 English Definition")
+                for d in info["en_defs"]:
+                    st.markdown(f"- *{d}*")
+
             # 双语例句
             if info["examples"]:
                 st.markdown("#### 例句 · 应用场景")
@@ -192,6 +198,8 @@ with tab_book:
                 st.audio(dict_api.audio_url(e["word"]), format="audio/mpeg")
                 for d in e["defs"]:
                     st.markdown(f"- {d}")
+                for d in e.get("en_defs", []):
+                    st.markdown(f"- *{d}*")
                 for ex in e.get("examples", [])[:2]:
                     st.markdown(f"**{ex['en']}**")
                     st.caption(ex["zh"])
@@ -242,6 +250,8 @@ with tab_review:
         else:
             for d in entry["defs"]:
                 st.markdown(f"- {d}")
+            for d in entry.get("en_defs", [])[:2]:
+                st.markdown(f"- *{d}*")
             if entry.get("examples"):
                 ex = entry["examples"][0]
                 st.markdown(f"**{ex['en']}**")

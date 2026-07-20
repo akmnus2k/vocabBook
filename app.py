@@ -1,4 +1,4 @@
-# -*- coding: utf-8 -*-
+﻿# -*- coding: utf-8 -*-
 """PT 单词本：查词（联想）→ 收藏 → 复习 → 场景练习，附搜索历史"""
 import random
 import re
@@ -11,7 +11,7 @@ from streamlit_searchbox import st_searchbox
 import dict_api
 import storage
 
-st.set_page_config(page_title="PT 单词本", page_icon="📘", layout="centered")
+st.set_page_config(page_title="PT 单词本", page_icon="📗", layout="centered")
 
 
 # ============ 访问密码（在 secrets.toml 里配 app_password，不配就不要密码） ============
@@ -24,7 +24,7 @@ def check_password() -> bool:
         return True
     if st.session_state.get("auth_ok"):
         return True
-    st.title("📘 PT 单词本")
+    st.title("📗 PT 单词本")
     entered = st.text_input("输入访问密码", type="password")
     if entered == pw:
         st.session_state.auth_ok = True
@@ -101,7 +101,7 @@ if "history" not in st.session_state:
 book = st.session_state.book
 history = st.session_state.history
 
-st.title("📘 PT 单词本")
+st.title("📗 PT 单词本")
 tab_search, tab_book, tab_review, tab_practice = st.tabs(
     ["🔍 查单词", "📒 我的单词本", "🌱 复习", "🎯 场景练习"])
 

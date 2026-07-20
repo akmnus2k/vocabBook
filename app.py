@@ -106,9 +106,10 @@ with tab_search:
                 st.markdown(f"- {d}")
 
             # 英文释义（上班时用英文向同事/病人解释就靠它）
-            if info["en_defs"]:
+            # 用 .get 安全取值：升级前的旧缓存结果里可能没有这个字段
+            if info.get("en_defs"):
                 st.markdown("#### 英文释义 English Definition")
-                for d in info["en_defs"]:
+                for d in info.get("en_defs", []):
                     st.markdown(f"- *{d}*")
 
             # 双语例句

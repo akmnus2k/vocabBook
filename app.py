@@ -1,5 +1,6 @@
 ﻿# -*- coding: utf-8 -*-
 """PT 单词本：查词（联想）→ 收藏 → 复习 → 场景练习，附搜索历史"""
+import html as html_lib
 import random
 import re
 import threading
@@ -84,15 +85,39 @@ def cached_pt_sentences(word):
     return dict_api.pt_sentences(word)
 
 
-def sound_button(word, label="🔊"):
-    """一点就发音的小按钮（在浏览器里直接播放，不用等服务器）"""
+def clickable_word(word, sub="", size=26, autoplay=False):
+    """可点击的单词：点单词本身就发音（浏览器本地播放，零延迟）
+
+    autoplay=True 时渲染后自动朗读一遍（浏览器拦截自动播放时静默失败，点词即可）
+    """
     url = dict_api.audio_url(word)
+    auto = (f"<script>new Audio('{url}').play().catch(function(){{}});</script>"
+            if autoplay else "")
+    sub_html = (f'<span style="font-size:14px;color:#7A8B96;margin-left:10px">'
+                f'{html_lib.escape(sub)}</span>') if sub else ""
     components.html(
-        f"""<button onclick="new Audio('{url}').play()"
-             style="background:#E9F3F8;border:1px solid #A8D4EA;border-radius:10px;
-                    padding:6px 14px;font-size:17px;cursor:pointer;width:100%">
-             {label}</button>""",
-        height=44,
+        f"""<div onclick="new Audio('{url}').play()" title="点击发音"
+              style="cursor:pointer;font-family:'Source Sans Pro',sans-serif;
+                     color:#3D4F5C;white-space:nowrap;overflow:hidden;
+                     text-overflow:ellipsis;line-height:1.4">
+              <span style="font-size:{size}px;font-weight:700">{html_lib.escape(word)}</span>
+              {sub_html}</div>{auto}""",
+        height=int(size * 1.7),
+    )
+
+
+def refocus_searchbox():
+    """把光标放回搜索框，方便连续查词"""
+    components.html(
+        """<script>
+        const doc = window.parent.document;
+        const fr = doc.querySelector('iframe[title="streamlit_searchbox.searchbox"]');
+        if (fr && fr.contentDocument) {
+            const inp = fr.contentDocument.querySelector('input');
+            if (inp) inp.focus({preventScroll: true});
+        }
+        </script>""",
+        height=0,
     )
 
 
@@ -127,12 +152,14 @@ with tab_search:
         key="word_search",
         placeholder="输入单词的前几个字母，比如 scolio ...",
         label="查词（输入时会自动联想）",
+        clear_on_submit=True,  # 选完自动清空，直接输下一个词
     )
     # 搜索框有新选择时，切换到这个词（历史记录里点词也会切换，见下面）
     if selected and selected != st.session_state.get("prev_search"):
         st.session_state.prev_search = selected
         # 统一转小写，避免 Anesthesia / anesthesia 记成两个词（全大写缩写词除外）
         st.session_state.view_word = selected if selected.isupper() else selected.lower()
+        st.session_state.refocus = True  # 查完把光标放回搜索框
 
     target = st.session_state.get("view_word")
 
@@ -152,7 +179,8 @@ with tab_search:
                 ).start()
                 st.session_state.hist_recorded = target
 
-            st.subheader(info["word"])
+            # 单词标题：点击单词本身就发音
+            clickable_word(info["word"], sub="点我发音", size=28)
 
             # 音标
             phones = []
@@ -163,24 +191,20 @@ with tab_search:
             if phones:
                 st.caption("　".join(phones))
 
-            # 发音 + 收藏放最上面，手机上一眼就能点到
-            c_snd, c_fav = st.columns([1, 3])
-            with c_snd:
-                sound_button(info["word"])
-            with c_fav:
-                if info["word"] in book:
-                    if st.button("💚 已收藏（点击移除）", use_container_width=True):
-                        storage.remove_word(book, info["word"])
-                        st.rerun()
-                else:
-                    if st.button("⭐ 收藏到单词本", type="primary",
-                                 use_container_width=True):
-                        imgs_for_save = cached_images(
-                            info["word"], img_context(info),
-                            st.session_state.get(f"img_first_{target}", 1))
-                        storage.add_word(book, info, imgs_for_save)
-                        st.toast(f"「{info['word']}」已收藏！", icon="⭐")
-                        st.rerun()
+            # 收藏按钮放最上面，手机上一眼就能点到
+            if info["word"] in book:
+                if st.button("💚 已收藏（点击移除）", use_container_width=True):
+                    storage.remove_word(book, info["word"])
+                    st.rerun()
+            else:
+                if st.button("⭐ 收藏到单词本", type="primary",
+                             use_container_width=True):
+                    imgs_for_save = cached_images(
+                        info["word"], img_context(info),
+                        st.session_state.get(f"img_first_{target}", 1))
+                    storage.add_word(book, info, imgs_for_save)
+                    st.toast(f"「{info['word']}」已收藏！", icon="⭐")
+                    st.rerun()
 
             # 中文释义
             st.markdown("#### 释义")
@@ -230,6 +254,10 @@ with tab_search:
                     st.session_state.view_word = e["word"]
                     st.rerun()
 
+    # 查完一个词后把光标放回搜索框，可以直接输下一个
+    if st.session_state.pop("refocus", False):
+        refocus_searchbox()
+
 
 # ============ 我的单词本 ============
 with tab_book:
@@ -262,14 +290,29 @@ with tab_book:
         )
 
         st.divider()
-        # 最新收藏的排在前面；每行：词条折叠卡 + 一点就响的发音按钮
-        for e in sorted(book.values(), key=lambda x: x["added"], reverse=True):
+
+        # 排序方式
+        sort_by = st.radio(
+            "排序", ["🕐 按添加时间", "🔤 按首字母", "🌱 按熟练度"],
+            horizontal=True, label_visibility="collapsed",
+        )
+        if sort_by == "🔤 按首字母":
+            entries = sorted(book.values(), key=lambda x: x["word"].lower())
+        elif sort_by == "🌱 按熟练度":
+            entries = sorted(book.values(),
+                             key=lambda x: (x.get("level", 0), x["word"].lower()))
+        else:  # 按添加时间，最新的在前
+            entries = sorted(book.values(), key=lambda x: x["added"], reverse=True)
+
+        # 每行：点单词发音 + 「详情」看释义
+        for e in entries:
             stars = "🌟" * e["level"] + "☆" * (len(storage.INTERVALS) - 1 - e["level"])
-            c_word, c_snd = st.columns([5, 1])
-            with c_snd:
-                sound_button(e["word"])
+            c_word, c_more = st.columns([5, 1])
             with c_word:
-                with st.expander(f"**{e['word']}**　{e['defs'][0] if e['defs'] else ''}"):
+                clickable_word(e["word"],
+                               sub=e["defs"][0] if e["defs"] else "", size=20)
+            with c_more:
+                with st.popover("详情"):
                     if e.get("phone_us"):
                         st.caption(f"美 /{e['phone_us']}/")
                     for d in e["defs"]:
@@ -279,7 +322,8 @@ with tab_book:
                     for ex in e.get("examples", [])[:2]:
                         st.markdown(f"**{ex['en']}**")
                         st.caption(ex["zh"])
-                    st.caption(f"熟练度 {stars}　|　收藏于 {e['added']}　|　下次复习 {e['next_review']}")
+                    st.caption(f"熟练度 {stars}")
+                    st.caption(f"收藏于 {e['added']}　下次复习 {e['next_review']}")
                     if st.button("移除", key=f"del_{e['word']}"):
                         storage.remove_word(book, e["word"])
                         st.rerun()
@@ -316,10 +360,9 @@ with tab_review:
         st.progress(st.session_state.review_done / st.session_state.review_total,
                     text=f"进度 {st.session_state.review_done} / {st.session_state.review_total}")
 
-        st.markdown(f"## {w}")
-        c_snd, _ = st.columns([1, 3])
-        with c_snd:
-            sound_button(w, "🔊 发音")
+        # 出题时自动朗读；点单词可以再听一遍
+        clickable_word(w, sub="点我再听一遍", size=34,
+                       autoplay=not st.session_state.show_answer)
 
         if not st.session_state.show_answer:
             if st.button("👀 显示答案", type="primary", use_container_width=True):
@@ -392,9 +435,7 @@ with tab_practice:
         st.divider()
         st.markdown("#### 🗣️ 用英文解释挑战")
         st.markdown(f"想象你在向同事或病人解释 **{pw_word}**——先自己用英文说一遍，再对照参考：")
-        c_snd, _ = st.columns([1, 3])
-        with c_snd:
-            sound_button(pw_word, "🔊 发音")
+        clickable_word(pw_word, sub="点我发音", size=22)
         with st.expander("对照参考答案"):
             en_defs = entry.get("en_defs") or cached_lookup(pw_word).get("en_defs", [])
             for d in en_defs:

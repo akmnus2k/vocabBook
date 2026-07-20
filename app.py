@@ -44,9 +44,36 @@ def cached_lookup(word):
     return dict_api.lookup(word)
 
 
+# 医学/康复相关的关键词——图片搜索优先挑含这些词的义项（一词多义时选 PT 那个意思）
+MED_KEYWORDS = [
+    "拐杖", "康复", "治疗", "理疗", "临床", "步态", "假肢", "矫形", "护理",
+    "医", "病", "症", "炎", "骨", "肌", "腱", "韧带", "关节", "神经",
+    "脊", "椎", "瘫", "患", "肺", "心脏", "血", "脑",
+]
+
+
+def img_context(info):
+    """从中文释义里挑一小段当图片搜索的附加词，帮助搜索引擎消歧义
+
+    比如 cane 的释义是 "茎；藤条；笞杖；拐杖"——优先选医学相关的"拐杖"，
+    这样搜出来的是助行手杖而不是甘蔗
+    """
+    segs = []
+    for d in info.get("defs", []):
+        d = re.sub(r"\[.*?\]", "", d)  # 去掉 [外科] 这类标签
+        for s in re.split(r"[；;，,、（()）]", d):
+            s = re.sub(r"^[a-z]+\.\s*", "", s.strip())  # 去掉词性 n. v. adj.
+            if s:
+                segs.append(s)
+    for s in segs:
+        if any(k in s for k in MED_KEYWORDS):
+            return s
+    return segs[0] if segs else ""
+
+
 @st.cache_data(ttl=3600, show_spinner=False)
-def cached_images(word):
-    return dict_api.get_images(word, n=3)
+def cached_images(word, context="", first=1):
+    return dict_api.get_images(word, n=3, context=context, first=first)
 
 
 # PT 场景例句一天内不会变，缓存久一点
@@ -138,14 +165,18 @@ with tab_search:
                     st.markdown(f"**{ex['en']}**")
                     st.caption(ex["zh"])
 
-            # 相关图片
-            imgs = cached_images(info["word"])
+            # 相关图片（带上中文释义一起搜，图片更贴合词义）
+            first = st.session_state.get(f"img_first_{target}", 1)
+            imgs = cached_images(info["word"], img_context(info), first)
             if imgs:
                 st.markdown("#### 相关图片")
                 cols = st.columns(len(imgs))
                 for col, url in zip(cols, imgs):
                     with col:
                         st.image(url, use_container_width=True)
+                if st.button("🔄 换一批图片"):
+                    st.session_state[f"img_first_{target}"] = first + 12
+                    st.rerun()
 
             st.divider()
 

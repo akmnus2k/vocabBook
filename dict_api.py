@@ -1,6 +1,5 @@
 # -*- coding: utf-8 -*-
 """词典接口层：联想、查词、图片、发音（全部免费接口，无需注册）"""
-import re
 import requests
 
 HEADERS = {
@@ -117,18 +116,22 @@ def pt_sentences(word: str, limit: int = 5):
     return results
 
 
-def get_images(word: str, n: int = 3):
-    """从必应图片搜索抓取前几张相关图片的地址"""
+def get_images(word: str, n: int = 3, context: str = "", first: int = 1):
+    """从 360 图片搜索取相关图片（返回的 thumb 在 360 自家 CDN 上，加载稳定）
+
+    context: 附加的搜索词（比如中文释义），能大幅提高相关性——
+             搜 "cane 手杖" 比只搜 "cane"（会出甘蔗、拐杖糖）准得多
+    first:   翻页起点，配合"换一批"按钮用
+    """
     try:
         r = requests.get(
-            "https://cn.bing.com/images/search",
-            params={"q": word, "first": 1},
-            headers=HEADERS, timeout=10,
+            "https://image.so.com/j",
+            params={"q": f"{word} {context}".strip(), "sn": first - 1, "pn": n + 5},
+            headers={**HEADERS, "Referer": "https://image.so.com/"},
+            timeout=8,
         )
-        urls = re.findall(r'murl&quot;:&quot;(.*?)&quot;', r.text)
-        if not urls:
-            urls = re.findall(r'"murl":"(.*?)"', r.text)
-        return urls[:n]
+        urls = [i.get("thumb") or i.get("img") for i in r.json().get("list", [])]
+        return [u for u in urls if u][:n]
     except Exception:
         return []
 

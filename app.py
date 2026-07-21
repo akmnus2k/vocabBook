@@ -263,14 +263,21 @@ def clickable_word(word, sub="", size=26, autoplay=False):
 
     autoplay=True 时渲染后自动朗读一遍（浏览器拦截自动播放时静默失败，点词即可）
     """
-    url = dict_api.audio_url(word)
-    auto = (f"<script>new Audio('{url}').play().catch(function(){{}});</script>"
-            if autoplay else "")
+    uk_url = dict_api.audio_url(word, "uk")
+    us_url = dict_api.audio_url(word, "us")
+    # 预加载一个 audio 元素：点击时直接播它，避免"现创建 Audio→异步加载→手势过期被拒"
+    # （这是手机上点击没声音的根因）。aid 用词做唯一 id，避免多个单词互相干扰。
+    # onerror：英音库缺这个词的录音时，自动换成美音，保证有声音。
+    aid = "a_" + re.sub(r"[^a-zA-Z]", "", word)
+    auto = f"<script>document.getElementById('{aid}').play().catch(function(){{}});</script>" if autoplay else ""
     sub_html = (f'<span style="font-size:14px;color:#7A8B96;margin-left:10px">'
                 f'{html_lib.escape(sub)}</span>') if sub else ""
     # 单词加一条浅蓝虚线下划线，暗示"可以点"，不用再写"点我发音"
     components.html(
-        f"""<div onclick="new Audio('{url}').play()" title="点击发音"
+        f"""<audio id="{aid}" src="{uk_url}" preload="auto"
+              onerror="this.onerror=null;this.src='{us_url}';"></audio>
+            <div onclick="var a=document.getElementById('{aid}');a.currentTime=0;a.play().catch(function(){{}});"
+              title="点击发音"
               style="cursor:pointer;font-family:'Source Sans Pro',sans-serif;
                      color:#3D4F5C;white-space:nowrap;overflow:hidden;
                      text-overflow:ellipsis;line-height:1.5">

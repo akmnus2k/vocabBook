@@ -402,13 +402,14 @@ with tab_search:
                     st.session_state[f"img_first_{target}"] = first + 12
                     st.rerun()
 
-    # 搜索历史：查过的词都在这里，点一下就能回看
-    if history:
+    # 搜索历史：只显示今天查过的词（完整历史仍然都存着）
+    today_items = [e for e in history.values()
+                   if e.get("last") == date.today().isoformat()]
+    if today_items:
         st.divider()
-        with st.expander(f"🕘 搜索历史（{len(history)} 个词）", expanded=not target):
-            items = sorted(history.values(),
-                           key=lambda x: (x.get("last", ""), x.get("count", 0)),
-                           reverse=True)
+        with st.expander(f"🕘 今天查过（{len(today_items)} 个词）", expanded=not target):
+            items = sorted(today_items,
+                           key=lambda x: x.get("count", 0), reverse=True)
             for e in items[:30]:
                 c1, c2 = st.columns([5, 1])
                 mark = "⭐" if e["word"] in book else ""

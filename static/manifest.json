@@ -1,0 +1,16 @@
+{
+  "name": "PT 单词本",
+  "short_name": "PT 单词本",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#F7FBFD",
+  "theme_color": "#A8D4EA",
+  "icons": [
+    {
+      "src": "/app/static/icon.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

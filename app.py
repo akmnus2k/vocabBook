@@ -39,16 +39,21 @@ div[data-testid="stMainBlockContainer"], .block-container {
 """, unsafe_allow_html=True)
 
 # 手机"添加到主屏幕"的图标：Streamlit 默认用自家红色 logo，这里换成
-# static/icon.png（浅蓝底绿书）。page_icon 只管浏览器标签页，管不到主屏幕图标，
-# 所以要把 apple-touch-icon（iOS）和大尺寸 icon（安卓）注入到父页面 head 里。
+# static/icon.png（浅蓝底绿书）。page_icon 只管浏览器标签页，管不到主屏幕图标：
+# iOS 认 apple-touch-icon，安卓 Chrome 优先认 manifest，普通收藏认 icon——
+# 三样都指向新图标，并顺手删掉 Streamlit 自带的红 logo favicon 链接。
 components.html("""<script>
 var doc = window.parent.document;
-["apple-touch-icon", "icon"].forEach(function (rel) {
-    doc.querySelectorAll('link[rel="' + rel + '"]').forEach(function (el) { el.remove(); });
+doc.querySelectorAll(
+    'link[rel="icon"], link[rel="shortcut icon"], link[rel="apple-touch-icon"], link[rel="manifest"]'
+).forEach(function (el) { el.remove(); });
+[["apple-touch-icon", "./app/static/icon.png"],
+ ["icon", "./app/static/icon.png"],
+ ["manifest", "./app/static/manifest.json"]].forEach(function (pair) {
     var link = doc.createElement("link");
-    link.rel = rel;
-    link.sizes = "512x512";
-    link.href = "./app/static/icon.png";
+    link.rel = pair[0];
+    if (pair[0] !== "manifest") link.sizes = "512x512";
+    link.href = pair[1];
     doc.head.appendChild(link);
 });
 </script>""", height=0)

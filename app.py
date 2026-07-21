@@ -137,9 +137,9 @@ def cached_pt_sentences(word):
 
 # ============ AI 诊室对话 ============
 # 生成结果一周内有效，同一个词不重复花调用
-# （key 和提示词版本都在缓存键里：换 key 或升级提示词都会重新生成）
+# prompt_ver 必须由调用方显式传入，才能真正进缓存键——升级提示词后旧缓存才会失效
 @st.cache_data(ttl=7 * 86400, show_spinner=False)
-def cached_ai_dialogues(word, zh, api_key, prompt_ver=ai_dialogue.PROMPT_VERSION):
+def cached_ai_dialogues(word, zh, api_key, prompt_ver):
     return ai_dialogue.generate_dialogues(word, zh, api_key)
 
 
@@ -590,7 +590,8 @@ with tab_practice:
         if zhipu_key:
             with st.spinner("AI 正在编写对话..."):
                 sents = cached_ai_dialogues(
-                    pw_word, img_context(entry) or pw_word, zhipu_key)
+                    pw_word, img_context(entry) or pw_word, zhipu_key,
+                    ai_dialogue.PROMPT_VERSION)
         if not sents:
             with st.spinner("正在找例句..."):
                 # 语料例句和收藏时存的例句合并，统一过滤掉学术长句

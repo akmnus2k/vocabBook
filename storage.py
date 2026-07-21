@@ -8,7 +8,7 @@
 import json
 import os
 import threading
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 
 # 后台线程和主线程可能同时写，加把锁防止互相踩
 _write_lock = threading.Lock()
@@ -159,6 +159,7 @@ def record_history(history: dict, word: str, brief: str):
     e = history.get(word, {"word": word, "count": 0, "first": today})
     e["count"] += 1
     e["last"] = today
+    e["last_ts"] = datetime.now().isoformat(timespec="minutes")  # 记到分钟，用于按时间排序、显示几点几分
     if brief:
         e["brief"] = brief
     history[word] = e

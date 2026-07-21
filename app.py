@@ -272,23 +272,33 @@ def display_count(sents):
     return 3 if len(short) >= 3 else min(len(sents), 2)
 
 
+def _audio_js(word):
+    """生成一段 JS：播有道真人音；加载失败时退回英式(en-GB)语音合成兜底"""
+    word_js = json.dumps(word)  # 安全地转成 JS 字符串字面量
+    src_js = json.dumps(dict_api.audio_url(word))
+    return (f"var a=new Audio({src_js});"
+            f"a.onerror=function(){{"
+            f"var u=new SpeechSynthesisUtterance({word_js});u.lang='en-GB';"
+            f"speechSynthesis.cancel();speechSynthesis.speak(u);}};"
+            f"a.play().catch(function(){{}});")
+
+
 def clickable_word(word, sub="", size=26, autoplay=False):
     """可点击的单词：点单词本身就发音
 
-    用浏览器内置的语音合成（Web Speech API）朗读——不下载任何音频文件，
-    任何词（含 tardieu 这类专名/冷僻词）都能读，指定英式发音，不受网络/CORS 影响。
-    autoplay=True 时渲染后自动读一遍（移动端可能拦截自动播放，点词即可）。
+    首选有道词典的真人发音（英音），音频加载失败时才退回浏览器内置的
+    语音合成（Web Speech API）兜底——保证冷僻词/断网时也能出声。
+    autoplay=True 时渲染后自动读一遍（浏览器可能拦截自动播放，点词即可）。
     """
-    word_js = json.dumps(word)  # 安全地转成 JS 字符串字面量
-    # speak：停掉上一个，用英式(en-GB)读当前词；设备没有英式语音时用默认语音
-    speak = (f"var u=new SpeechSynthesisUtterance({word_js});u.lang='en-GB';"
-             f"speechSynthesis.cancel();speechSynthesis.speak(u);")
-    auto = f"<script>{speak}</script>" if autoplay else ""
+    # 发音逻辑放进具名函数，onclick 只调用它——否则 JS 里的引号会和
+    # onclick="..." 的属性引号打架，把处理器截断成一句残缺代码（点了没反应）
+    script = f"<script>function playWord(){{{_audio_js(word)}}}</script>"
+    auto = "<script>playWord()</script>" if autoplay else ""
     sub_html = (f'<span style="font-size:14px;color:#7A8B96;margin-left:10px">'
                 f'{html_lib.escape(sub)}</span>') if sub else ""
     # 单词加一条浅蓝虚线下划线，暗示"可以点"，不用再写"点我发音"
     components.html(
-        f"""<div onclick="{speak}" title="点击发音"
+        f"""{script}<div onclick="playWord()" title="点击发音"
               style="cursor:pointer;font-family:'Source Sans Pro',sans-serif;
                      color:#3D4F5C;white-space:nowrap;overflow:hidden;
                      text-overflow:ellipsis;line-height:1.5">
@@ -298,6 +308,46 @@ def clickable_word(word, sub="", size=26, autoplay=False):
               {sub_html}</div>{auto}""",
         height=int(size * 1.8),
     )
+
+
+def speaker_only(word, size=44, autoplay=True):
+    """只放发音、不显示单词——用于「听音辨词」题型。点 🔊 可再听一遍。"""
+    script = f"<script>function playWord(){{{_audio_js(word)}}}</script>"
+    auto = "<script>playWord()</script>" if autoplay else ""
+    components.html(
+        f"""{script}<div onclick="playWord()" title="再听一遍"
+              style="cursor:pointer;text-align:center;line-height:1.4;
+                     font-size:{size}px;user-select:none">🔊</div>{auto}""",
+        height=int(size * 1.6),
+    )
+
+
+# 复习题型：cn 看词想义、en 看义猜词、cloze 例句填空、listen 听音辨词
+QUIZ_LABELS = {"看词想义": "cn", "看义猜词": "en",
+               "例句填空": "cloze", "听音辨词": "listen"}
+# 答对时随机蹦一句彩虹屁，给点即时反馈
+PRAISE = ["🎯 记得牢！", "⚡ 秒答！", "🌟 就是它！", "👍 稳！", "🍀 漂亮！", "🧠 好记性！"]
+
+
+def pick_quiz_mode(entry, allowed):
+    """在允许的题型里随机挑一个；没有例句的词跳过「例句填空」"""
+    modes = [m for m in allowed if m != "cloze" or entry.get("examples")]
+    return random.choice(modes) if modes else "cn"
+
+
+def reveal_details(entry, defs=True, example=True):
+    """揭晓答案时展示的详情：中文释义 / 英文释义 / 例句 / 图片"""
+    if defs:
+        for d in concise_defs(entry["defs"]):
+            st.markdown(f"- {d}")
+        for d in entry.get("en_defs", [])[:1]:
+            st.markdown(f"- *{d}*")
+    if example and entry.get("examples"):
+        ex = entry["examples"][0]
+        st.markdown(f"**{ex['en']}**")
+        st.caption(ex["zh"])
+    if entry.get("images"):
+        st.image(entry["images"][0], width=260)
 
 
 def refocus_searchbox():
@@ -514,13 +564,16 @@ with tab_search:
     if today_items:
         st.divider()
         with st.expander(f"🕘 今天查过（{len(today_items)} 个词）", expanded=not target):
+            # 最近查的排最前（按查询时间倒序）
             items = sorted(today_items,
-                           key=lambda x: x.get("count", 0), reverse=True)
+                           key=lambda x: x.get("last_ts", ""), reverse=True)
             for e in items[:30]:
                 c1, c2 = st.columns([5, 1])
                 mark = "⭐" if e["word"] in book else ""
+                # 只显示几点几分，不显示日期
+                hm = e.get("last_ts", "")[11:16]
                 c1.markdown(f"**{e['word']}** {mark}　{e.get('brief', '')}")
-                c1.caption(f"查过 {e.get('count', 1)} 次 · 最近 {e.get('last', '')}")
+                c1.caption(f"查过 {e.get('count', 1)} 次 · {hm}")
                 if c2.button("查看", key=f"hist_{e['word']}"):
                     st.session_state.view_word = e["word"]
                     st.rerun()
@@ -601,76 +654,138 @@ with tab_book:
 
 
 # ============ 复习 ============
-with tab_review:
-    due = storage.due_words(book)
+REVIEW_KEYS = ("review_queue", "review_total", "review_done",
+               "review_streak", "review_allowed", "show_answer")
 
-    # 还没开始复习
+with tab_review:
+    # 还没开始：先让用户挑范围、题量、题型，再开始
     if "review_queue" not in st.session_state:
         if not book:
             st.info("先去收藏一些单词，才能开始复习哦～")
-        elif not due:
-            st.success("🎉 今天的复习任务已完成，没有到期的单词！")
         else:
-            st.markdown(f"今天有 **{len(due)}** 个单词等着复习")
-            if st.button("开始复习", type="primary"):
-                queue = [e["word"] for e in due]
-                random.shuffle(queue)
-                st.session_state.review_queue = queue
-                st.session_state.review_total = len(queue)
+            due = storage.due_words(book)
+            st.markdown(f"今天有 **{len(due)}** 个单词到期　·　单词本共 **{len(book)}** 个")
+
+            # 范围：今日到期 / 全部单词 / 生词优先（等级低的排前面）
+            scope = st.pills("复习范围",
+                             ["今日到期", "全部单词", "生词优先"],
+                             default="今日到期", selection_mode="single") or "今日到期"
+            if scope == "今日到期":
+                pool = list(due)
+            elif scope == "生词优先":
+                # 等级越低越生，排前面；同等级按收藏早晚
+                pool = sorted(book.values(),
+                              key=lambda e: (e.get("level", 0), e.get("added", "")))
+            else:
+                pool = list(book.values())
+
+            # 题量
+            count_label = st.pills("题量", ["10 个", "20 个", "全部"],
+                                   default="全部", selection_mode="single") or "全部"
+            limit = {"10 个": 10, "20 个": 20}.get(count_label, len(pool))
+
+            # 题型：可多选，默认四种混合，制造随机性
+            picked_modes = st.pills(
+                "题型（可多选，混着来更有意思）",
+                list(QUIZ_LABELS.keys()),
+                default=list(QUIZ_LABELS.keys()), selection_mode="multi")
+            allowed = [QUIZ_LABELS[m] for m in (picked_modes or ["看词想义"])]
+
+            if not pool:
+                st.success("🎉 这个范围里没有可复习的单词！")
+            elif st.button("开始复习", type="primary"):
+                # 生词优先按顺序取前 N（保住"最生的"），其余范围随机抽 N
+                if scope == "生词优先":
+                    chosen = pool[:limit]
+                else:
+                    chosen = random.sample(pool, min(limit, len(pool)))
+                random.shuffle(chosen)
+                st.session_state.review_queue = [
+                    {"word": e["word"], "mode": pick_quiz_mode(e, allowed)}
+                    for e in chosen]
+                st.session_state.review_allowed = allowed
+                st.session_state.review_total = len(chosen)
                 st.session_state.review_done = 0
+                st.session_state.review_streak = 0
                 st.session_state.show_answer = False
                 st.rerun()
     # 复习进行中
     elif st.session_state.review_queue:
-        w = st.session_state.review_queue[0]
+        card = st.session_state.review_queue[0]
+        w, mode = card["word"], card["mode"]
         entry = book.get(w)
         if entry is None:  # 词条被删除的兜底
             st.session_state.review_queue.pop(0)
             st.rerun()
 
-        st.progress(st.session_state.review_done / st.session_state.review_total,
-                    text=f"进度 {st.session_state.review_done} / {st.session_state.review_total}")
+        show = st.session_state.show_answer
+        streak = st.session_state.review_streak
+        st.progress(
+            st.session_state.review_done / st.session_state.review_total,
+            text=(f"进度 {st.session_state.review_done} / {st.session_state.review_total}"
+                  + (f"　🔥 连对 {streak}" if streak >= 2 else "")))
 
-        # 出题时自动朗读；点单词可以再听一遍
-        clickable_word(w, size=34,
-                       autoplay=not st.session_state.show_answer)
+        # ---- 题面：按题型出不同的题 ----
+        if mode == "cn":
+            st.caption("🧠 看英文，想想它的中文意思")
+            clickable_word(w, size=34, autoplay=not show)
+        elif mode == "en":
+            st.caption("🔤 看中文，猜是哪个英文词")
+            for d in concise_defs(entry["defs"]):
+                st.markdown(f"### {d}")
+            if show:
+                clickable_word(w, size=34, autoplay=True)
+        elif mode == "cloze":
+            st.caption("✏️ 填出例句里空缺的词")
+            ex = entry["examples"][0]
+            if show:
+                st.markdown(f"### {highlight(ex['en'], w)}")
+                clickable_word(w, size=30, autoplay=True)
+            else:
+                st.markdown(f"### {cloze(ex['en'], w)}")
+                st.caption(ex["zh"])
+        else:  # listen
+            st.caption("👂 听发音，猜猜是哪个词")
+            speaker_only(w, autoplay=not show)
+            if show:
+                clickable_word(w, size=34, autoplay=False)
 
-        if not st.session_state.show_answer:
+        # ---- 揭晓答案 + 打分 ----
+        if not show:
             if st.button("👀 显示答案", type="primary", use_container_width=True):
                 st.session_state.show_answer = True
                 st.rerun()
         else:
-            for d in concise_defs(entry["defs"]):
-                st.markdown(f"- {d}")
-            for d in entry.get("en_defs", [])[:1]:
-                st.markdown(f"- *{d}*")
-            if entry.get("examples"):
-                ex = entry["examples"][0]
-                st.markdown(f"**{ex['en']}**")
-                st.caption(ex["zh"])
-            if entry.get("images"):
-                st.image(entry["images"][0], width=260)
+            # 各题型该补的详情：填空别重复例句，看义猜词别重复中文释义
+            reveal_details(entry,
+                           defs=(mode != "en"),
+                           example=(mode != "cloze"))
 
             c1, c2 = st.columns(2)
             if c1.button("😊 认识", type="primary", use_container_width=True):
                 storage.grade(book, w, known=True)
                 st.session_state.review_queue.pop(0)
                 st.session_state.review_done += 1
+                st.session_state.review_streak += 1
                 st.session_state.show_answer = False
+                st.toast(random.choice(PRAISE))
                 st.rerun()
             if c2.button("😵 不认识", use_container_width=True):
                 storage.grade(book, w, known=False)
-                # 不认识的词放到队尾，这一轮里还会再出现
-                st.session_state.review_queue.append(
-                    st.session_state.review_queue.pop(0))
+                st.session_state.review_streak = 0
+                # 不认识的放回队尾，并换个题型再考一遍
+                card = st.session_state.review_queue.pop(0)
+                card["mode"] = pick_quiz_mode(entry, st.session_state.review_allowed)
+                st.session_state.review_queue.append(card)
                 st.session_state.show_answer = False
+                st.toast("再看一遍就记住啦 💪")
                 st.rerun()
     # 本轮复习结束
     else:
         st.balloons()
         st.success(f"🎉 复习完成！本轮共复习 {st.session_state.review_total} 个单词。")
         if st.button("返回"):
-            for k in ("review_queue", "review_total", "review_done", "show_answer"):
+            for k in REVIEW_KEYS:
                 st.session_state.pop(k, None)
             st.rerun()
 

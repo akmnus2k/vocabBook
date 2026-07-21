@@ -144,11 +144,4 @@ def audio_url(word: str, accent: str = "uk") -> str:
     默认英音——用户在澳洲，澳式英语更接近英式发音
     """
     t = 2 if accent == "us" else 1
-    return f"https://dict.youdao.com/dictvoice?audio={word}&type={t}"
-
-
-def google_tts_url(word: str, accent: str = "uk") -> str:
-    """Google 英式合成音，作为有道加载失败时的兜底（任何词都有、发音一致）"""
-    tl = "en-GB" if accent == "uk" else "en-US"
-    return ("https://translate.google.com/translate_tts"
-            f"?ie=UTF-8&client=tw-ob&tl={tl}&q={quote(word)}")
+    return f"https://dict.youdao.com/dictvoice?audio={quote(word)}&type={t}"

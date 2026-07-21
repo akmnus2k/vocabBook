@@ -105,6 +105,18 @@ def concise_defs(defs, n=2):
     return [simplify_def(d) for d in ordered[:n]]
 
 
+def recommend_scenes(src):
+    """按单词类型推荐相关场景（器械/动作类/其它），避免给抽象词推"教用拐杖"这种"""
+    t = "".join(src.get("defs", []))
+    if any(k in t for k in ["杖", "器", "仪", "支具", "轮椅", "矫形", "护具"]):
+        return ["教怎么使用", "复诊看进展", "初次评估"]
+    if any(k in t for k in ["肌", "关节", "韧带", "腱", "伸", "屈", "拉",
+                            "活动", "运动", "力量", "步态"]):
+        return ["教做动作", "初次评估", "复诊看进展"]
+    # 病症、诊断、抽象概念等：解释类场景最通用
+    return ["向病人解释", "初次评估", "复诊看进展"]
+
+
 def img_context(info):
     """从中文释义里挑一小段当图片搜索的附加词，帮助搜索引擎消歧义
 
@@ -691,23 +703,18 @@ with tab_practice:
             src = book.get(pw_word) or cached_lookup(pw_word)
             zh = img_context(src) or pw_word
 
-            # 推荐场景：点一下直接填进下面的输入框
-            st.caption("推荐场景（点一下直接用），或在下面自己输入")
-            recs = ["初次评估问诊", "教患者做动作", "向病人解释病情",
-                    "教用拐杖/助行器", "复诊看进展"]
-            for row_start in range(0, len(recs), 2):
-                cols = st.columns(2)
-                for col, r in zip(cols, recs[row_start:row_start + 2]):
-                    if col.button(r, use_container_width=True, key=f"rec_{r}"):
-                        st.session_state.scene_hint = r
-                        st.rerun()
-
-            scene = st.text_input(
-                "场景", placeholder="比如：教患者用助行器、跟病人解释治疗计划",
-                label_visibility="collapsed", key="scene_hint")
+            # 推荐场景：按词类型给几个相关的，用紧凑标签（一行搞定，不占地方）
+            pick_scene = st.pills(
+                "推荐场景", recommend_scenes(src),
+                selection_mode="single", label_visibility="collapsed")
+            custom = st.text_input(
+                "场景", placeholder="或自己输入场景，比如：教患者用助行器",
+                label_visibility="collapsed", key="scene_custom")
+            # 自己输入的优先，否则用点选的标签
+            scene = custom.strip() or (pick_scene or "")
 
             if not scene.strip():
-                st.info("👆 选一个推荐场景，或自己输入一个场景")
+                st.info("👆 点一个推荐场景，或自己输入一个")
             else:
                 with st.spinner("AI 正在按你的场景编写对话..."):
                     sents = cached_scene(pw_word, zh, scene.strip(), zhipu_key,

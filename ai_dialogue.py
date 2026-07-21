@@ -10,15 +10,29 @@ import requests
 
 API_URL = "https://open.bigmodel.cn/api/paas/v4/chat/completions"
 
-PROMPT = """你是一位在物理治疗（PT）诊所工作的英语老师。\
-请用英文单词「{word}」（中文含义：{zh}）造 3 句物理治疗师日常工作中真实会说的话，\
-比如问诊、体格检查、指导训练动作、向患者解释病情时的口语表达。
+# 提示词版本号：改了提示词就 +1，让应用端的缓存失效、重新生成
+PROMPT_VERSION = 2
 
-要求：
-1. 每句必须自然地用到 {word}（可以是常见变形），语法必须正确
-2. 句子简短口语化，15 个词以内，像治疗师和患者面对面交谈
-3. 三句覆盖不同场景（比如一句问诊、一句指导、一句解释）
-4. 每句配自然的中文翻译
+PROMPT = """你是美国社区诊所里一位说话随和的物理治疗师，正在和普通患者面对面聊天。\
+请用英文单词「{word}」（中文含义：{zh}）写 3 句你在诊室里对患者说的日常口语。
+
+患者是不懂医学的普通人，你说话必须像聊天一样简单自然。参考下面的风格：
+
+✅ 好的例子（要这种口语感）：
+- "Does it hurt when I press right here?"
+- "Try to keep your back straight when you lift stuff."
+- "Your knee's looking way better than last week."
+
+❌ 坏的例子（太书面太学术，绝对禁止）：
+- "It is important to maintain proper postural alignment."
+- "This intervention will facilitate functional recovery."
+- "Regular exercise can improve clinical outcomes."
+
+硬性要求：
+1. 每句自然用到 {word}（可用常见变形），语法正确
+2. 每句 12 个词以内，多用缩写（it's / let's / you're / that's）
+3. 三句场景不同：一句检查时的提问，一句动作指导，一句用大白话向患者解释这个词相关的情况
+4. 中文翻译也要口语化，像当面说话，不要书面腔
 
 只输出 JSON 数组，不要任何其他文字，格式：
 [{{"en": "英文句子", "zh": "中文翻译"}}]"""

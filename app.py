@@ -136,9 +136,10 @@ def cached_pt_sentences(word):
 
 
 # ============ AI 诊室对话 ============
-# 生成结果一周内有效，同一个词不重复花调用（key 也作为缓存键：填了新 key 会重新生成）
+# 生成结果一周内有效，同一个词不重复花调用
+# （key 和提示词版本都在缓存键里：换 key 或升级提示词都会重新生成）
 @st.cache_data(ttl=7 * 86400, show_spinner=False)
-def cached_ai_dialogues(word, zh, api_key):
+def cached_ai_dialogues(word, zh, api_key, prompt_ver=ai_dialogue.PROMPT_VERSION):
     return ai_dialogue.generate_dialogues(word, zh, api_key)
 
 

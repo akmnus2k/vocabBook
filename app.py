@@ -156,15 +156,32 @@ def cached_ai_image(word, zh, api_key):
     return ai_dialogue.generate_image(word, zh, api_key)
 
 
-def pick_simple_sents(sents, n=3):
-    """从语料例句里挑最短、最口语的几句（越像对话越靠前）"""
-    def score(ex):
-        wc = len(ex["en"].split())
-        s = wc
-        if "you" in ex["en"].lower():
-            s -= 8
-        return s
-    return sorted(sents, key=score)[:n]
+# 论文/学术句的标志词，含这些的例句一律不要
+_ACADEMIC_MARKERS = [
+    "methods", "objective", "conclusion", "results", "study", "analyzed",
+    "mechanism", "explore", "investigate", "clinical feature", "cases of",
+    "were collected", "in order to", "this paper", "evaluated", "revealed",
+]
+
+
+def pick_simple_sents(sents, n=2, max_words=10):
+    """从语料例句里挑最短、最口语的句子；太长或太学术的直接丢弃
+
+    宁可少给两句，也不出现论文腔的长句
+    """
+    good = []
+    for ex in sents:
+        en = ex["en"].strip()
+        low = en.lower()
+        if len(en.split()) > max_words:
+            continue
+        if any(m in low for m in _ACADEMIC_MARKERS):
+            continue
+        good.append(ex)
+    # 含 you/your（对话感强）的排前面，再按短句优先
+    good.sort(key=lambda ex: (0 if "you" in ex["en"].lower() else 1,
+                              len(ex["en"].split())))
+    return good[:n]
 
 
 def clickable_word(word, sub="", size=26, autoplay=False):
@@ -581,12 +598,15 @@ with tab_practice:
                     pw_word, img_context(entry) or pw_word, zhipu_key)
         if not sents:
             with st.spinner("正在找例句..."):
-                sents = pick_simple_sents(cached_pt_sentences(pw_word))
-        if not sents:  # 再不行就用收藏时存的普通例句
-            sents = entry.get("examples", [])[:3]
+                # 语料例句和收藏时存的例句合并，统一过滤掉学术长句
+                pool = cached_pt_sentences(pw_word) + entry.get("examples", [])
+                sents = pick_simple_sents(pool)
 
         if not sents:
-            st.info("这个词暂时没找到合适的例句，试试别的词～")
+            if zhipu_key:
+                st.info("这个词暂时没编出合适的对话，点上面的单词换一个试试～")
+            else:
+                st.info("配置 AI 后这里会自动生成诊室对话（见部署指南）")
         else:
             for i, ex in enumerate(sents[:2], 1):
                 st.markdown(f"{i}. {cloze(ex['en'], pw_word)}")

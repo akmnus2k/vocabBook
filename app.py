@@ -664,13 +664,13 @@ with tab_review:
             st.info("先去收藏一些单词，才能开始复习哦～")
         else:
             due = storage.due_words(book)
-            st.markdown(f"今天有 **{len(due)}** 个单词到期　·　单词本共 **{len(book)}** 个")
+            st.markdown(f"今日待复习 **{len(due)}** 个　·　单词本共 **{len(book)}** 个")
 
-            # 范围：今日到期 / 全部单词 / 生词优先（等级低的排前面）
+            # 范围：今日复习 / 全部单词 / 生词优先（等级低的排前面）
             scope = st.pills("复习范围",
-                             ["今日到期", "全部单词", "生词优先"],
-                             default="今日到期", selection_mode="single") or "今日到期"
-            if scope == "今日到期":
+                             ["今日复习", "全部单词", "生词优先"],
+                             default="今日复习", selection_mode="single") or "今日复习"
+            if scope == "今日复习":
                 pool = list(due)
             elif scope == "生词优先":
                 # 等级越低越生，排前面；同等级按收藏早晚

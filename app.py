@@ -165,15 +165,21 @@ _ACADEMIC_MARKERS = [
 
 
 def pick_simple_sents(sents, n=3, max_words=14):
-    """从语料例句里挑短、口语的句子；太长或太学术的直接丢弃"""
+    """从语料例句里挑短、口语的句子；太长、太学术或重复的直接丢弃"""
     good = []
+    seen = set()
     for ex in sents:
         en = ex["en"].strip()
         low = en.lower()
+        # 归一化后去重：忽略大小写、标点和多余空格，避免出现两句几乎一样的
+        norm = re.sub(r"[^a-z]", "", low)
+        if norm in seen:
+            continue
         if len(en.split()) > max_words:
             continue
         if any(m in low for m in _ACADEMIC_MARKERS):
             continue
+        seen.add(norm)
         good.append(ex)
     # 含 you/your（对话感强）的排前面，再按短句优先
     good.sort(key=lambda ex: (0 if "you" in ex["en"].lower() else 1,

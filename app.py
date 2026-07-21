@@ -68,6 +68,7 @@ MED_KEYWORDS = [
     "拐杖", "康复", "治疗", "理疗", "临床", "步态", "假肢", "矫形", "护理",
     "医", "病", "症", "炎", "骨", "肌", "腱", "韧带", "关节", "神经",
     "脊", "椎", "瘫", "患", "肺", "心脏", "血", "脑",
+    "粘连", "痉挛", "水肿", "萎缩", "劳损", "脱位", "侧弯",
 ]
 
 
@@ -127,6 +128,70 @@ def cached_images(word, context="", first=1):
 @st.cache_data(ttl=86400, show_spinner=False)
 def cached_pt_sentences(word):
     return dict_api.pt_sentences(word)
+
+
+# ============ PT 诊室对话模板 ============
+# 按单词类型选一组治疗师日常会说的话，把单词填进去，比学术例句更贴近工作场景
+DIALOGUE_TEMPLATES = {
+    "condition": [  # 病症类
+        ("The test results suggest you may have {w}.", "检查结果提示你可能有{z}。"),
+        ("Do you have a family history of {w}?", "你有{z}的家族史吗？"),
+        ("Many patients with {w} improve with regular exercise.", "很多{z}患者通过规律锻炼会有改善。"),
+        ("We'll make a treatment plan for your {w}.", "我们会为你的{z}制定治疗计划。"),
+    ],
+    "body": [  # 身体部位/结构类
+        ("Does it hurt when I press your {w}?", "我按你的{z}时会疼吗？"),
+        ("This exercise helps strengthen your {w}.", "这个动作能帮助强化你的{z}。"),
+        ("Try not to overload your {w} this week.", "这一周尽量别让{z}负担太重。"),
+        ("Do you feel any numbness around your {w}?", "你{z}附近有麻木感吗？"),
+    ],
+    "device": [  # 辅助器具类
+        ("Let me show you how to use the {w} properly.", "我来教你正确使用{z}。"),
+        ("You may need a {w} for the next two weeks.", "接下来两周你可能需要用{z}。"),
+        ("Adjust the {w} until it feels comfortable.", "把{z}调整到舒服的位置。"),
+    ],
+    "general": [  # 功能/评估等通用名词
+        ("Today we're going to work on your {w}.", "今天我们要练习你的{z}。"),
+        ("I noticed some changes in your {w} since last week.", "和上周相比，你的{z}有些变化。"),
+        ("Let's do a quick {w} assessment first.", "我们先做个简单的{z}评估。"),
+    ],
+}
+
+_CONDITION_KWS = ["症", "炎", "痛", "瘫", "麻", "损伤", "凸", "畸形", "不张",
+                  "栓", "梗", "溃疡", "骨折", "挛缩",
+                  "粘连", "痉挛", "水肿", "萎缩", "劳损", "脱位", "侧弯"]
+_DEVICE_KWS = ["杖", "器", "仪", "支具", "轮椅", "矫形"]
+_BODY_KWS = ["肌", "骨", "关节", "神经", "腱", "韧带", "椎", "脊柱", "肢", "膜"]
+
+
+def make_dialogues(word, entry):
+    """给名词生成 PT 诊室对话；不适合套模板的词返回 None（改用语料例句）"""
+    defs = entry.get("defs", [])
+    defs_text = "".join(defs)
+    if not defs_text.strip().startswith("n"):  # 只有名词填进模板才通顺
+        return None
+    zh = img_context(entry) or word
+    if any(k in defs_text for k in _CONDITION_KWS):
+        cat = "condition"
+    elif any(k in defs_text for k in _DEVICE_KWS):
+        cat = "device"
+    elif any(k in defs_text for k in _BODY_KWS):
+        cat = "body"
+    else:
+        cat = "general"
+    return [{"en": en.format(w=word), "zh": zh_t.format(z=zh)}
+            for en, zh_t in DIALOGUE_TEMPLATES[cat]]
+
+
+def pick_simple_sents(sents, n=3):
+    """从语料例句里挑最短、最口语的几句（越像对话越靠前）"""
+    def score(ex):
+        wc = len(ex["en"].split())
+        s = wc
+        if "you" in ex["en"].lower():
+            s -= 8
+        return s
+    return sorted(sents, key=score)[:n]
 
 
 def clickable_word(word, sub="", size=26, autoplay=False):
@@ -511,23 +576,25 @@ with tab_practice:
         pw_word = st.selectbox("选一个单词来练习", sorted(book.keys()))
         entry = book[pw_word]
 
-        # —— 练习一：PT 场景填空 ——
-        st.markdown("#### ✍️ PT 场景填空")
-        st.caption("下面是这个词在物理治疗/康复场景里的真实句子，先看中文提示，想想空里填什么")
-        with st.spinner("正在找 PT 场景例句..."):
-            sents = cached_pt_sentences(pw_word)
-        if not sents:  # 搜不到场景句就用收藏时存的普通例句
-            sents = entry.get("examples", [])
+        # —— 练习一：诊室对话填空 ——
+        st.markdown("#### 💬 诊室对话填空")
+        st.caption("治疗师日常会说的话，看中文提示，想想空里是哪个词")
+        sents = make_dialogues(pw_word, entry)
+        if sents is None:  # 形容词/动词等不适合套模板，改用语料里最口语的短句
+            with st.spinner("正在找例句..."):
+                sents = pick_simple_sents(cached_pt_sentences(pw_word))
+        if not sents:  # 再不行就用收藏时存的普通例句
+            sents = entry.get("examples", [])[:3]
 
         if not sents:
             st.info("这个词暂时没找到合适的例句，试试别的词～")
         else:
-            for i, ex in enumerate(sents[:5], 1):
+            for i, ex in enumerate(sents[:4], 1):
                 st.markdown(f"{i}. {cloze(ex['en'], pw_word)}")
                 st.caption(ex["zh"])
             if st.toggle("👀 显示原句", key="show_cloze_answer"):
                 st.divider()
-                for i, ex in enumerate(sents[:5], 1):
+                for i, ex in enumerate(sents[:4], 1):
                     st.markdown(f"{i}. {highlight(ex['en'], pw_word)}")
 
         # —— 练习二：用英文解释 ——

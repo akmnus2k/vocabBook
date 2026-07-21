@@ -146,8 +146,9 @@ def cached_ai_dialogues(word, zh, api_key, prompt_ver):
 
 
 # 自定义场景对话按（词+场景）缓存，同样的场景不重复生成
+# ver 显式传入才进缓存键——升级 SCENE_PROMPT 后旧缓存才会失效
 @st.cache_data(ttl=7 * 86400, show_spinner=False)
-def cached_scene(word, zh, scene, api_key):
+def cached_scene(word, zh, scene, api_key, ver):
     return ai_dialogue.generate_scene(word, zh, scene, api_key)
 
 
@@ -709,15 +710,16 @@ with tab_practice:
                 st.info("👆 选一个推荐场景，或自己输入一个场景")
             else:
                 with st.spinner("AI 正在按你的场景编写对话..."):
-                    sents = cached_scene(pw_word, zh, scene.strip(), zhipu_key)
+                    sents = cached_scene(pw_word, zh, scene.strip(), zhipu_key,
+                                         ai_dialogue.SCENE_VERSION)
                 if not sents:
                     st.warning("这个场景没生成出来，换个说法再试试～")
                 else:
-                    k = display_count(sents)
-                    for i, ex in enumerate(sents[:k], 1):
+                    # 场景对话显示全部（一整段），不再砍成 2-3 句
+                    for i, ex in enumerate(sents, 1):
                         st.markdown(f"{i}. {cloze(ex['en'], pw_word)}")
                         st.caption(ex["zh"])
                     if st.toggle("👀 显示原句", key="show_cloze_answer"):
                         st.divider()
-                        for i, ex in enumerate(sents[:k], 1):
+                        for i, ex in enumerate(sents, 1):
                             st.markdown(f"{i}. {highlight(ex['en'], pw_word)}")

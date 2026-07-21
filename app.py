@@ -199,14 +199,17 @@ def clickable_word(word, sub="", size=26, autoplay=False):
             if autoplay else "")
     sub_html = (f'<span style="font-size:14px;color:#7A8B96;margin-left:10px">'
                 f'{html_lib.escape(sub)}</span>') if sub else ""
+    # 单词加一条浅蓝虚线下划线，暗示"可以点"，不用再写"点我发音"
     components.html(
         f"""<div onclick="new Audio('{url}').play()" title="点击发音"
               style="cursor:pointer;font-family:'Source Sans Pro',sans-serif;
                      color:#3D4F5C;white-space:nowrap;overflow:hidden;
-                     text-overflow:ellipsis;line-height:1.4">
-              <span style="font-size:{size}px;font-weight:700">{html_lib.escape(word)}</span>
+                     text-overflow:ellipsis;line-height:1.5">
+              <span style="font-size:{size}px;font-weight:700;
+                     border-bottom:2px dashed #A8D4EA;padding-bottom:1px">
+                     {html_lib.escape(word)}</span>
               {sub_html}</div>{auto}""",
-        height=int(size * 1.7),
+        height=int(size * 1.8),
     )
 
 
@@ -269,7 +272,7 @@ def word_detail_dialog():
         st.session_state.dlg_open = True
         st.rerun()
 
-    clickable_word(e["word"], sub="点我发音", size=24)
+    clickable_word(e["word"], size=24)
     if e.get("phone_us"):
         st.caption(f"美 /{e['phone_us']}/")
     for d in concise_defs(e["defs"]):
@@ -336,7 +339,7 @@ with tab_search:
                 st.session_state.hist_recorded = target
 
             # 单词标题：点击单词本身就发音
-            clickable_word(info["word"], sub="点我发音", size=28)
+            clickable_word(info["word"], size=28)
 
             # 音标
             phones = []
@@ -527,7 +530,7 @@ with tab_review:
                     text=f"进度 {st.session_state.review_done} / {st.session_state.review_total}")
 
         # 出题时自动朗读；点单词可以再听一遍
-        clickable_word(w, sub="点我再听一遍", size=34,
+        clickable_word(w, size=34,
                        autoplay=not st.session_state.show_answer)
 
         if not st.session_state.show_answer:
@@ -613,7 +616,7 @@ with tab_practice:
         st.divider()
         st.markdown("#### 🗣️ 用英文解释挑战")
         st.markdown(f"想象你在向同事或病人解释 **{pw_word}**——先自己用英文说一遍，再对照参考：")
-        clickable_word(pw_word, sub="点我发音", size=22)
+        clickable_word(pw_word, size=22)
         with st.expander("对照参考答案"):
             en_defs = entry.get("en_defs") or cached_lookup(pw_word).get("en_defs", [])
             for d in en_defs:

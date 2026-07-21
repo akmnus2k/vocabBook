@@ -136,7 +136,10 @@ def get_images(word: str, n: int = 3, context: str = "", first: int = 1):
         return []
 
 
-def audio_url(word: str, accent: str = "us") -> str:
-    """单词发音音频地址（type=2 美音，type=1 英音）"""
+def audio_url(word: str, accent: str = "uk") -> str:
+    """单词发音音频地址（type=1 英音，type=2 美音）
+
+    默认英音——用户在澳洲，澳式英语更接近英式发音
+    """
     t = 2 if accent == "us" else 1
     return f"https://dict.youdao.com/dictvoice?audio={word}&type={t}"

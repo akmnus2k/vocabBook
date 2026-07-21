@@ -11,26 +11,36 @@ import requests
 API_URL = "https://open.bigmodel.cn/api/paas/v4/chat/completions"
 
 # 提示词版本号：改了提示词就 +1，让应用端的缓存失效、重新生成
-PROMPT_VERSION = 4
+PROMPT_VERSION = 5
 
 PROMPT = """你是美国社区诊所里一位说话随和的物理治疗师，正在和普通患者面对面聊天。\
-请用英文单词「{word}」（中文含义：{zh}）写 3 句你在诊室里对患者说的日常口语。
+请用英文单词「{word}」（中文含义：{zh}）写 3 句你在诊室里真实会说的日常口语。
 
-患者是不懂医学的普通人，你说话必须像聊天一样简单自然。参考下面的风格：
+**先判断这个词属于哪一类，再决定怎么用它造句**，这样才自然：
 
-✅ 好的例子（要这种口语感）：
-- "Does it hurt right here?"
-- "Keep your back straight, like this."
-- "Your knee's looking way better."
+① 诊断/病症名（如肺不张、脊柱侧凸、椎间盘突出）——病人不会主动说这种词，\
+所以要用「治疗师向病人解释这个诊断」的口吻。
+   ✅ "Part of your lung isn't fully opening up—that's atelectasis."
+   ✅ "Your spine curves a bit sideways. We call it scoliosis."
+   ❌ "Do you have atelectasis?"（病人不可能这样被问）
 
-❌ 坏的例子（太书面太学术，绝对禁止）：
+② 症状/感觉/动作/身体部位（如疼痛、麻木、拉伸、膝盖、步态）——直接用在问诊或指导里。
+   ✅ "Does your knee still feel stiff?"
+   ✅ "Let's stretch your calf a little."
+
+③ 器械/辅助工具（如拐杖、护具）——用在指导病人使用的场景。
+   ✅ "Let me show you how to hold the cane."
+
+患者是不懂医学的普通人，你说话必须像聊天一样简单自然：
+
+❌ 绝对禁止的书面腔：
 - "It is important to maintain proper postural alignment."
 - "This intervention will facilitate functional recovery."
 
 硬性要求：
 1. 每句自然用到 {word}（可用常见变形），语法正确
 2. 句子越短越口语越好，多用缩写（it's / let's / you're），一般别超过 12 个词
-3. 三句场景不同：一句检查提问，一句动作指导，一句用大白话解释
+3. 三句尽量场景不同
 4. 中文翻译也要口语化，像当面说话
 
 只输出 JSON 数组，不要任何其他文字，格式：

@@ -11,6 +11,7 @@ import streamlit as st
 import streamlit.components.v1 as components
 from streamlit_searchbox import st_searchbox
 
+import ai_dialogue
 import dict_api
 import storage
 
@@ -134,57 +135,18 @@ def cached_pt_sentences(word):
     return dict_api.pt_sentences(word)
 
 
-# ============ PT 诊室对话模板 ============
-# 按单词类型选一组治疗师日常会说的话，把单词填进去，比学术例句更贴近工作场景
-DIALOGUE_TEMPLATES = {
-    "condition": [  # 病症类
-        ("The test results suggest you may have {w}.", "检查结果提示你可能有{z}。"),
-        ("Do you have a family history of {w}?", "你有{z}的家族史吗？"),
-        ("Many patients with {w} improve with regular exercise.", "很多{z}患者通过规律锻炼会有改善。"),
-        ("We'll make a treatment plan for your {w}.", "我们会为你的{z}制定治疗计划。"),
-    ],
-    "body": [  # 身体部位/结构类
-        ("Does it hurt when I press your {w}?", "我按你的{z}时会疼吗？"),
-        ("This exercise helps strengthen your {w}.", "这个动作能帮助强化你的{z}。"),
-        ("Try not to overload your {w} this week.", "这一周尽量别让{z}负担太重。"),
-        ("Do you feel any numbness around your {w}?", "你{z}附近有麻木感吗？"),
-    ],
-    "device": [  # 辅助器具类
-        ("Let me show you how to use the {w} properly.", "我来教你正确使用{z}。"),
-        ("You may need a {w} for the next two weeks.", "接下来两周你可能需要用{z}。"),
-        ("Adjust the {w} until it feels comfortable.", "把{z}调整到舒服的位置。"),
-    ],
-    "general": [  # 功能/评估等通用名词
-        ("Today we're going to work on your {w}.", "今天我们要练习你的{z}。"),
-        ("I noticed some changes in your {w} since last week.", "和上周相比，你的{z}有些变化。"),
-        ("Let's do a quick {w} assessment first.", "我们先做个简单的{z}评估。"),
-    ],
-}
-
-_CONDITION_KWS = ["症", "炎", "痛", "瘫", "麻", "损伤", "凸", "畸形", "不张",
-                  "栓", "梗", "溃疡", "骨折", "挛缩",
-                  "粘连", "痉挛", "水肿", "萎缩", "劳损", "脱位", "侧弯"]
-_DEVICE_KWS = ["杖", "器", "仪", "支具", "轮椅", "矫形"]
-_BODY_KWS = ["肌", "骨", "关节", "神经", "腱", "韧带", "椎", "脊柱", "肢", "膜"]
+# ============ AI 诊室对话 ============
+# 生成结果一周内有效，同一个词不重复花调用（key 也作为缓存键：填了新 key 会重新生成）
+@st.cache_data(ttl=7 * 86400, show_spinner=False)
+def cached_ai_dialogues(word, zh, api_key):
+    return ai_dialogue.generate_dialogues(word, zh, api_key)
 
 
-def make_dialogues(word, entry):
-    """给名词生成 PT 诊室对话；不适合套模板的词返回 None（改用语料例句）"""
-    defs = entry.get("defs", [])
-    defs_text = "".join(defs)
-    if not defs_text.strip().startswith("n"):  # 只有名词填进模板才通顺
-        return None
-    zh = img_context(entry) or word
-    if any(k in defs_text for k in _CONDITION_KWS):
-        cat = "condition"
-    elif any(k in defs_text for k in _DEVICE_KWS):
-        cat = "device"
-    elif any(k in defs_text for k in _BODY_KWS):
-        cat = "body"
-    else:
-        cat = "general"
-    return [{"en": en.format(w=word), "zh": zh_t.format(z=zh)}
-            for en, zh_t in DIALOGUE_TEMPLATES[cat]]
+def get_zhipu_key():
+    try:
+        return st.secrets.get("zhipu_api_key", "")
+    except Exception:
+        return ""
 
 
 def pick_simple_sents(sents, n=3):
@@ -590,8 +552,14 @@ with tab_practice:
         # —— 练习一：诊室对话填空 ——
         st.markdown("#### 💬 诊室对话填空")
         st.caption("治疗师日常会说的话，看中文提示，想想空里是哪个词")
-        sents = make_dialogues(pw_word, entry)
-        if sents is None:  # 形容词/动词等不适合套模板，改用语料里最口语的短句
+        # 优先 AI 根据词义现编对话；没配 key 或失败时退回语料里最口语的短句
+        sents = None
+        zhipu_key = get_zhipu_key()
+        if zhipu_key:
+            with st.spinner("AI 正在编写对话..."):
+                sents = cached_ai_dialogues(
+                    pw_word, img_context(entry) or pw_word, zhipu_key)
+        if not sents:
             with st.spinner("正在找例句..."):
                 sents = pick_simple_sents(cached_pt_sentences(pw_word))
         if not sents:  # 再不行就用收藏时存的普通例句

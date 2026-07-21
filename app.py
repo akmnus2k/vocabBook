@@ -45,7 +45,7 @@ div[data-testid="stMainBlockContainer"], .block-container {
 components.html("""<script>
 var doc = window.parent.document;
 doc.querySelectorAll(
-    'link[rel="icon"], link[rel="shortcut icon"], link[rel="apple-touch-icon"], link[rel="manifest"]'
+    'link[rel~="icon"], link[rel="apple-touch-icon"], link[rel="mask-icon"], link[rel="manifest"]'
 ).forEach(function (el) { el.remove(); });
 [["apple-touch-icon", "./app/static/icon.png"],
  ["icon", "./app/static/icon.png"],

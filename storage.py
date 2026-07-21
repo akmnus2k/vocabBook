@@ -8,7 +8,21 @@
 import json
 import os
 import threading
-from datetime import date, datetime, timedelta
+from datetime import datetime, timedelta, timezone
+
+# 应用统一用北京时间：云端服务器跑在 UTC，直接 date.today() 每天要到北京时间
+# 上午 8 点才翻篇——昨晚查的词会一直挂在"今天查过"里，复习任务也翻不了天
+TZ = timezone(timedelta(hours=8))
+
+
+def now() -> datetime:
+    return datetime.now(TZ)
+
+
+def today_iso() -> str:
+    """北京时间的今天，如 2026-07-22"""
+    return now().date().isoformat()
+
 
 # 后台线程和主线程可能同时写，加把锁防止互相踩
 _write_lock = threading.Lock()
@@ -105,7 +119,7 @@ def save_book(book: dict):
 
 def add_word(book: dict, info: dict, images: list):
     """把查到的单词收藏进单词本"""
-    today = date.today().isoformat()
+    today = today_iso()
     book[info["word"]] = {
         "word": info["word"],
         "phone_us": info.get("phone_us", ""),
@@ -129,7 +143,7 @@ def remove_word(book: dict, word: str):
 
 def due_words(book: dict) -> list:
     """今天需要复习的词条列表"""
-    today = date.today().isoformat()
+    today = today_iso()
     return [e for e in book.values() if e.get("next_review", today) <= today]
 
 
@@ -143,7 +157,7 @@ def grade(book: dict, word: str, known: bool):
     else:
         entry["level"] = 0
     days = INTERVALS[entry["level"]]
-    entry["next_review"] = (date.today() + timedelta(days=days)).isoformat()
+    entry["next_review"] = (now().date() + timedelta(days=days)).isoformat()
     save_book(book)
 
 
@@ -155,11 +169,11 @@ def load_history() -> dict:
 
 def record_history(history: dict, word: str, brief: str):
     """记一笔搜索历史（同一个词多次查会累计次数）"""
-    today = date.today().isoformat()
+    today = today_iso()
     e = history.get(word, {"word": word, "count": 0, "first": today})
     e["count"] += 1
     e["last"] = today
-    e["last_ts"] = datetime.now().isoformat(timespec="minutes")  # 记到分钟，用于按时间排序、显示几点几分
+    e["last_ts"] = now().isoformat(timespec="minutes")  # 记到分钟，用于按时间排序、显示几点几分
     if brief:
         e["brief"] = brief
     history[word] = e

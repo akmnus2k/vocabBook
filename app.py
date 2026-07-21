@@ -5,7 +5,6 @@ import json
 import random
 import re
 import threading
-from datetime import date
 
 import pandas as pd
 import streamlit as st
@@ -580,7 +579,7 @@ with tab_search:
 
     # 搜索历史：只显示今天查过的词（完整历史仍然都存着）
     today_items = [e for e in history.values()
-                   if e.get("last") == date.today().isoformat()]
+                   if e.get("last") == storage.today_iso()]
     if today_items:
         st.divider()
         with st.expander(f"🕘 今天查过（{len(today_items)} 个词）", expanded=not target):
@@ -635,7 +634,7 @@ with tab_book:
         b2.download_button(
             "⬇️ 导出 CSV",
             df.to_csv(index=False).encode("utf-8-sig"),
-            file_name=f"单词本_{date.today().isoformat()}.csv",
+            file_name=f"单词本_{storage.today_iso()}.csv",
             use_container_width=True,
         )
 

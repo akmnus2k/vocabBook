@@ -1,3 +1,7 @@
+# 静态文件托管：static/ 目录下的文件可通过 /app/static/... 访问（主屏幕图标用）
+[server]
+enableStaticServing = true
+
 # 浅蓝主题
 [theme]
 primaryColor = "#A8D4EA"              # 主色：浅蓝

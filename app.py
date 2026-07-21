@@ -38,6 +38,21 @@ div[data-testid="stMainBlockContainer"], .block-container {
 </style>
 """, unsafe_allow_html=True)
 
+# 手机"添加到主屏幕"的图标：Streamlit 默认用自家红色 logo，这里换成
+# static/icon.png（浅蓝底绿书）。page_icon 只管浏览器标签页，管不到主屏幕图标，
+# 所以要把 apple-touch-icon（iOS）和大尺寸 icon（安卓）注入到父页面 head 里。
+components.html("""<script>
+var doc = window.parent.document;
+["apple-touch-icon", "icon"].forEach(function (rel) {
+    doc.querySelectorAll('link[rel="' + rel + '"]').forEach(function (el) { el.remove(); });
+    var link = doc.createElement("link");
+    link.rel = rel;
+    link.sizes = "512x512";
+    link.href = "./app/static/icon.png";
+    doc.head.appendChild(link);
+});
+</script>""", height=0)
+
 
 # ============ 访问密码（在 secrets.toml 里配 app_password，不配就不要密码） ============
 def check_password() -> bool:

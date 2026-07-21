@@ -672,47 +672,52 @@ with tab_practice:
     if not book:
         st.info("先去收藏一些单词，才能开始场景练习哦～")
     else:
-        pw_word = st.selectbox("选一个单词来练习", sorted(book.keys()))
-        entry = book[pw_word]
-
-        # —— 练习一：自定义场景填空 ——
         st.markdown("#### 💬 自定义场景练习")
-        st.caption("输入一个场景（中文），AI 会生成这个词在该场景下的诊室对话")
         zhipu_key = get_zhipu_key()
-        scene = st.text_input(
-            "场景", placeholder="比如：教患者用助行器、术后第一次评估、跟病人解释治疗计划",
-            label_visibility="collapsed", key="scene_hint")
 
-        sents = None
+        # 选词：从单词本选，或直接输入任意英文单词（不限于单词本）
+        c1, c2 = st.columns(2)
+        picked = c1.selectbox("从单词本选", ["—"] + sorted(book.keys()))
+        typed = c2.text_input("或输入英文单词", placeholder="如 gait")
+        pw_word = typed.strip() or (picked if picked != "—" else "")
+
         if not zhipu_key:
             st.info("配置 AI 后可用自定义场景（见部署指南）")
-        elif not scene.strip():
-            st.info("👆 在上面输入一个场景，就能生成贴合该场景的对话练习")
+        elif not pw_word:
+            st.info("👆 从单词本选一个词，或直接输入要练习的英文单词")
         else:
-            with st.spinner("AI 正在按你的场景编写对话..."):
-                sents = cached_scene(pw_word, img_context(entry) or pw_word,
-                                     scene.strip(), zhipu_key)
-            if not sents:
-                st.warning("这个场景没生成出来，换个说法再试试～")
+            # 拿中文含义：单词本里有就用现成的，否则查一下
+            src = book.get(pw_word) or cached_lookup(pw_word)
+            zh = img_context(src) or pw_word
 
-        if sents:
-            k = display_count(sents)
-            for i, ex in enumerate(sents[:k], 1):
-                st.markdown(f"{i}. {cloze(ex['en'], pw_word)}")
-                st.caption(ex["zh"])
-            if st.toggle("👀 显示原句", key="show_cloze_answer"):
-                st.divider()
-                for i, ex in enumerate(sents[:k], 1):
-                    st.markdown(f"{i}. {highlight(ex['en'], pw_word)}")
+            # 推荐场景：点一下直接填进下面的输入框
+            st.caption("推荐场景（点一下直接用），或在下面自己输入")
+            recs = ["初次评估问诊", "教患者做动作", "向病人解释病情",
+                    "教用拐杖/助行器", "复诊看进展"]
+            for row_start in range(0, len(recs), 2):
+                cols = st.columns(2)
+                for col, r in zip(cols, recs[row_start:row_start + 2]):
+                    if col.button(r, use_container_width=True, key=f"rec_{r}"):
+                        st.session_state.scene_hint = r
+                        st.rerun()
 
-        # —— 练习二：用英文解释 ——
-        st.divider()
-        st.markdown("#### 🗣️ 用英文解释挑战")
-        st.markdown(f"想象你在向同事或病人解释 **{pw_word}**——先自己用英文说一遍，再对照参考：")
-        clickable_word(pw_word, size=22)
-        with st.expander("对照参考答案"):
-            en_defs = entry.get("en_defs") or cached_lookup(pw_word).get("en_defs", [])
-            for d in en_defs:
-                st.markdown(f"- *{d}*")
-            for d in entry.get("defs", []):
-                st.markdown(f"- {d}")
+            scene = st.text_input(
+                "场景", placeholder="比如：教患者用助行器、跟病人解释治疗计划",
+                label_visibility="collapsed", key="scene_hint")
+
+            if not scene.strip():
+                st.info("👆 选一个推荐场景，或自己输入一个场景")
+            else:
+                with st.spinner("AI 正在按你的场景编写对话..."):
+                    sents = cached_scene(pw_word, zh, scene.strip(), zhipu_key)
+                if not sents:
+                    st.warning("这个场景没生成出来，换个说法再试试～")
+                else:
+                    k = display_count(sents)
+                    for i, ex in enumerate(sents[:k], 1):
+                        st.markdown(f"{i}. {cloze(ex['en'], pw_word)}")
+                        st.caption(ex["zh"])
+                    if st.toggle("👀 显示原句", key="show_cloze_answer"):
+                        st.divider()
+                        for i, ex in enumerate(sents[:k], 1):
+                            st.markdown(f"{i}. {highlight(ex['en'], pw_word)}")

@@ -164,11 +164,8 @@ _ACADEMIC_MARKERS = [
 ]
 
 
-def pick_simple_sents(sents, n=2, max_words=10):
-    """从语料例句里挑最短、最口语的句子；太长或太学术的直接丢弃
-
-    宁可少给两句，也不出现论文腔的长句
-    """
+def pick_simple_sents(sents, n=3, max_words=14):
+    """从语料例句里挑短、口语的句子；太长或太学术的直接丢弃"""
     good = []
     for ex in sents:
         en = ex["en"].strip()
@@ -182,6 +179,14 @@ def pick_simple_sents(sents, n=2, max_words=10):
     good.sort(key=lambda ex: (0 if "you" in ex["en"].lower() else 1,
                               len(ex["en"].split())))
     return good[:n]
+
+
+def display_count(sents):
+    """句子都短就多显示一句（最多 3），有长句就少显示，避免一屏读不完"""
+    if not sents:
+        return 0
+    short = [ex for ex in sents if len(ex["en"].split()) <= 8]
+    return 3 if len(short) >= 3 else min(len(sents), 2)
 
 
 def clickable_word(word, sub="", size=26, autoplay=False):
@@ -608,12 +613,13 @@ with tab_practice:
             else:
                 st.info("配置 AI 后这里会自动生成诊室对话（见部署指南）")
         else:
-            for i, ex in enumerate(sents[:2], 1):
+            k = display_count(sents)
+            for i, ex in enumerate(sents[:k], 1):
                 st.markdown(f"{i}. {cloze(ex['en'], pw_word)}")
                 st.caption(ex["zh"])
             if st.toggle("👀 显示原句", key="show_cloze_answer"):
                 st.divider()
-                for i, ex in enumerate(sents[:2], 1):
+                for i, ex in enumerate(sents[:k], 1):
                     st.markdown(f"{i}. {highlight(ex['en'], pw_word)}")
 
         # —— 练习二：用英文解释 ——

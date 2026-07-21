@@ -17,6 +17,7 @@ import storage
 st.set_page_config(page_title="PT 单词本", page_icon="📗", layout="centered")
 
 # 手机上 Streamlit 默认把并排的列堆成竖排，这里强制保持横排（否则按钮各占一行太浪费空间）
+# 同时压缩页面顶部的大片留白
 st.markdown("""
 <style>
 @media (max-width: 640px) {
@@ -28,6 +29,9 @@ st.markdown("""
     div[data-testid="stHorizontalBlock"] > div[data-testid="stColumn"] {
         min-width: 0 !important;
     }
+}
+div[data-testid="stMainBlockContainer"], .block-container {
+    padding-top: 2.2rem !important;
 }
 </style>
 """, unsafe_allow_html=True)
@@ -295,7 +299,7 @@ def word_detail_dialog():
 if st.session_state.pop("dlg_open", False):
     word_detail_dialog()
 
-st.title("📗 PT 单词本")
+st.markdown("##### 📗 PT 单词本")
 tab_search, tab_book, tab_review, tab_practice = st.tabs(
     ["🔍 查单词", "📒 我的单词本", "🌱 复习", "🎯 场景练习"])
 
@@ -305,9 +309,15 @@ with tab_search:
     selected = st_searchbox(
         dict_api.suggest,
         key="word_search",
-        placeholder="输入单词的前几个字母，比如 scolio ...",
-        label="查词（输入时会自动联想）",
+        placeholder="",
         clear_on_submit=True,  # 选完自动清空，直接输下一个词
+        style_overrides={
+            "searchbox": {
+                "control": {"minHeight": 48, "fontSize": 17,
+                            "borderRadius": 10},
+                "option": {"fontSize": 15},
+            },
+        },
     )
     # 搜索框有新选择时，切换到这个词（历史记录里点词也会切换，见下面）
     if selected and selected != st.session_state.get("prev_search"):

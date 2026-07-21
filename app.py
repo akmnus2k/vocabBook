@@ -150,6 +150,12 @@ def get_zhipu_key():
         return ""
 
 
+# AI 示意图一天内复用同一张，避免重复画
+@st.cache_data(ttl=86400, show_spinner=False)
+def cached_ai_image(word, zh, api_key):
+    return ai_dialogue.generate_image(word, zh, api_key)
+
+
 def pick_simple_sents(sents, n=3):
     """从语料例句里挑最短、最口语的几句（越像对话越靠前）"""
     def score(ex):
@@ -375,6 +381,19 @@ with tab_search:
                     st.session_state[f"img_first_{target}"] = first + 12
                     st.rerun()
 
+            # AI 画一张贴合词义的示意图（点了才画，不拖慢正常查词）
+            if get_zhipu_key():
+                if st.button("🎨 AI 生成示意图"):
+                    st.session_state[f"ai_img_{target}"] = True
+                if st.session_state.get(f"ai_img_{target}"):
+                    with st.spinner("AI 画图中，大约要 10 秒..."):
+                        ai_url = cached_ai_image(
+                            info["word"], img_context(info), get_zhipu_key())
+                    if ai_url:
+                        st.image(ai_url, width=320)
+                    else:
+                        st.caption("这次没画出来，稍后再点一次试试")
+
     # 搜索历史：只显示今天查过的词（完整历史仍然都存着）
     today_items = [e for e in history.values()
                    if e.get("last") == date.today().isoformat()]
@@ -569,12 +588,12 @@ with tab_practice:
         if not sents:
             st.info("这个词暂时没找到合适的例句，试试别的词～")
         else:
-            for i, ex in enumerate(sents[:4], 1):
+            for i, ex in enumerate(sents[:2], 1):
                 st.markdown(f"{i}. {cloze(ex['en'], pw_word)}")
                 st.caption(ex["zh"])
             if st.toggle("👀 显示原句", key="show_cloze_answer"):
                 st.divider()
-                for i, ex in enumerate(sents[:4], 1):
+                for i, ex in enumerate(sents[:2], 1):
                     st.markdown(f"{i}. {highlight(ex['en'], pw_word)}")
 
         # —— 练习二：用英文解释 ——

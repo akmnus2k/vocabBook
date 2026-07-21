@@ -136,11 +136,59 @@ def cached_pt_sentences(word):
 
 
 # ============ AI 诊室对话 ============
-# 生成结果一周内有效，同一个词不重复花调用
-# prompt_ver 必须由调用方显式传入，才能真正进缓存键——升级提示词后旧缓存才会失效
+# 对话存进单词本词条（dialogues 字段），练习时直接读，秒开；
+# 收藏时就后台生成好，通常一次都不用等。dialogues_ver 记生成时的提示词版本，
+# 升级提示词后版本不匹配会自动重新生成。
+# 内存缓存兜底：同一会话里现场生成过的词，存回词条前不重复调用
 @st.cache_data(ttl=7 * 86400, show_spinner=False)
 def cached_ai_dialogues(word, zh, api_key, prompt_ver):
     return ai_dialogue.generate_dialogues(word, zh, api_key)
+
+
+def pregen_dialogues(word, zh, api_key):
+    """后台生成诊室对话并存进词条（收藏后台调用，不阻塞界面）"""
+    d = ai_dialogue.generate_dialogues(word, zh, api_key)
+    if not d:
+        return
+    # 重新读最新单词本再写回，避免覆盖其他改动
+    latest = storage.load_book()
+    if word in latest:
+        latest[word]["dialogues"] = d
+        latest[word]["dialogues_ver"] = ai_dialogue.PROMPT_VERSION
+        storage.save_book(latest)
+
+
+def start_pregen(word, zh, api_key):
+    if api_key:
+        threading.Thread(target=pregen_dialogues,
+                         args=(word, zh, api_key), daemon=True).start()
+
+
+def sweep_missing_dialogues(words_zh, api_key, ver):
+    """后台顺序补齐所有缺对话/版本过期的词，一次一个避免触发限流"""
+    for word, zh in words_zh:
+        latest = storage.load_book()
+        e = latest.get(word)
+        if not e or (e.get("dialogues") and e.get("dialogues_ver") == ver):
+            continue
+        d = ai_dialogue.generate_dialogues(word, zh, api_key)
+        if d:
+            e["dialogues"] = d
+            e["dialogues_ver"] = ver
+            storage.save_book(latest)
+
+
+def start_sweep(book, api_key):
+    """整个会话只扫一次，把存量单词的对话在后台补齐"""
+    if not api_key or st.session_state.get("swept"):
+        return
+    ver = ai_dialogue.PROMPT_VERSION
+    todo = [(w, img_context(e) or w) for w, e in book.items()
+            if not (e.get("dialogues") and e.get("dialogues_ver") == ver)]
+    if todo:
+        st.session_state.swept = True
+        threading.Thread(target=sweep_missing_dialogues,
+                         args=(todo, api_key, ver), daemon=True).start()
 
 
 def get_zhipu_key():
@@ -246,6 +294,9 @@ if "history" not in st.session_state:
     st.session_state.history = storage.load_history()
 book = st.session_state.book
 history = st.session_state.history
+
+# 会话开始时后台补齐存量单词的诊室对话，让练习尽量都秒开
+start_sweep(book, get_zhipu_key())
 
 
 @st.dialog("词条详情")
@@ -362,6 +413,9 @@ with tab_search:
                         info["word"], img_context(info),
                         st.session_state.get(f"img_first_{target}", 1))
                     storage.add_word(book, info, imgs_for_save)
+                    # 收藏的同时后台把诊室对话先生成好，之后练习秒开
+                    start_pregen(info["word"], img_context(info) or info["word"],
+                                 get_zhipu_key())
                     st.toast(f"「{info['word']}」已收藏！", icon="⭐")
                     st.rerun()
 
@@ -584,14 +638,21 @@ with tab_practice:
         # —— 练习一：诊室对话填空 ——
         st.markdown("#### 💬 诊室对话填空")
         st.caption("治疗师日常会说的话，看中文提示，想想空里是哪个词")
-        # 优先 AI 根据词义现编对话；没配 key 或失败时退回语料里最口语的短句
         sents = None
         zhipu_key = get_zhipu_key()
-        if zhipu_key:
-            with st.spinner("AI 正在编写对话..."):
+        ver = ai_dialogue.PROMPT_VERSION
+        # ① 词条里已存好且版本匹配 → 直接读，秒开
+        if entry.get("dialogues") and entry.get("dialogues_ver") == ver:
+            sents = entry["dialogues"]
+        # ② 没存过（比如刚收藏就来练，或存量老词）→ 现场生成一次并存回，下次秒开
+        elif zhipu_key:
+            with st.spinner("AI 正在编写对话（第一次要等一下，之后就秒开了）..."):
                 sents = cached_ai_dialogues(
-                    pw_word, img_context(entry) or pw_word, zhipu_key,
-                    ai_dialogue.PROMPT_VERSION)
+                    pw_word, img_context(entry) or pw_word, zhipu_key, ver)
+            if sents:
+                entry["dialogues"] = sents
+                entry["dialogues_ver"] = ver
+                storage.save_book(book)
         if not sents:
             with st.spinner("正在找例句..."):
                 # 语料例句和收藏时存的例句合并，统一过滤掉学术长句

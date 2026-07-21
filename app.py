@@ -145,6 +145,12 @@ def cached_ai_dialogues(word, zh, api_key, prompt_ver):
     return ai_dialogue.generate_dialogues(word, zh, api_key)
 
 
+# 自定义场景对话按（词+场景）缓存，同样的场景不重复生成
+@st.cache_data(ttl=7 * 86400, show_spinner=False)
+def cached_scene(word, zh, scene, api_key):
+    return ai_dialogue.generate_scene(word, zh, scene, api_key)
+
+
 def pregen_dialogues(word, zh, api_key):
     """后台生成诊室对话并存进词条（收藏后台调用，不阻塞界面）"""
     d = ai_dialogue.generate_dialogues(word, zh, api_key)
@@ -162,6 +168,21 @@ def start_pregen(word, zh, api_key):
     if api_key:
         threading.Thread(target=pregen_dialogues,
                          args=(word, zh, api_key), daemon=True).start()
+
+
+def get_dialogues(word, zh, entry, api_key):
+    """拿一个词的诊室对话：已存好的秒回，否则现场生成（并存回已收藏的词）"""
+    ver = ai_dialogue.PROMPT_VERSION
+    if entry and entry.get("dialogues") and entry.get("dialogues_ver") == ver:
+        return entry["dialogues"]
+    if not api_key:
+        return None
+    d = cached_ai_dialogues(word, zh, api_key, ver)
+    if d and entry is not None:  # 已收藏的词顺手存回，下次秒开
+        entry["dialogues"] = d
+        entry["dialogues_ver"] = ver
+        storage.save_book(book)
+    return d
 
 
 def sweep_missing_dialogues(words_zh, api_key, ver):
@@ -428,11 +449,23 @@ with tab_search:
             if info.get("en_defs"):
                 st.markdown(f"🗣️ *{info['en_defs'][0]}*")
 
-            # 例句只显示一条
-            if info["examples"]:
+            # 应用例句：优先诊室对话（口语、贴近工作），生成不出来才退回有道例句
+            st.markdown("#### 例句 · 应用场景")
+            entry_in_book = book.get(info["word"])
+            with st.spinner("加载例句..."):
+                clinic = get_dialogues(
+                    info["word"], img_context(info) or info["word"],
+                    entry_in_book, get_zhipu_key())
+            if clinic:
+                for ex in clinic[:2]:
+                    st.markdown(f"**{ex['en']}**")
+                    st.caption(ex["zh"])
+            elif info["examples"]:
                 ex = info["examples"][0]
                 st.markdown(f"**{ex['en']}**")
                 st.caption(ex["zh"])
+            else:
+                st.caption("这个词暂时没有合适的例句")
 
             # 完整内容想看再展开
             has_more = (len(info["defs"]) > 2 or len(info.get("en_defs", [])) > 1
@@ -443,7 +476,7 @@ with tab_search:
                         st.markdown(f"- {d}")
                     for d in info.get("en_defs", [])[1:]:
                         st.markdown(f"- *{d}*")
-                    for ex in info["examples"][1:]:
+                    for ex in info["examples"]:
                         st.markdown(f"**{ex['en']}**")
                         st.caption(ex["zh"])
 
@@ -635,36 +668,27 @@ with tab_practice:
         pw_word = st.selectbox("选一个单词来练习", sorted(book.keys()))
         entry = book[pw_word]
 
-        # —— 练习一：诊室对话填空 ——
-        st.markdown("#### 💬 诊室对话填空")
-        st.caption("治疗师日常会说的话，看中文提示，想想空里是哪个词")
-        sents = None
+        # —— 练习一：自定义场景填空 ——
+        st.markdown("#### 💬 自定义场景练习")
+        st.caption("输入一个场景（中文），AI 会生成这个词在该场景下的诊室对话")
         zhipu_key = get_zhipu_key()
-        ver = ai_dialogue.PROMPT_VERSION
-        # ① 词条里已存好且版本匹配 → 直接读，秒开
-        if entry.get("dialogues") and entry.get("dialogues_ver") == ver:
-            sents = entry["dialogues"]
-        # ② 没存过（比如刚收藏就来练，或存量老词）→ 现场生成一次并存回，下次秒开
-        elif zhipu_key:
-            with st.spinner("AI 正在编写对话（第一次要等一下，之后就秒开了）..."):
-                sents = cached_ai_dialogues(
-                    pw_word, img_context(entry) or pw_word, zhipu_key, ver)
-            if sents:
-                entry["dialogues"] = sents
-                entry["dialogues_ver"] = ver
-                storage.save_book(book)
-        if not sents:
-            with st.spinner("正在找例句..."):
-                # 语料例句和收藏时存的例句合并，统一过滤掉学术长句
-                pool = cached_pt_sentences(pw_word) + entry.get("examples", [])
-                sents = pick_simple_sents(pool)
+        scene = st.text_input(
+            "场景", placeholder="比如：教患者用助行器、术后第一次评估、跟病人解释治疗计划",
+            label_visibility="collapsed", key="scene_hint")
 
-        if not sents:
-            if zhipu_key:
-                st.info("这个词暂时没编出合适的对话，点上面的单词换一个试试～")
-            else:
-                st.info("配置 AI 后这里会自动生成诊室对话（见部署指南）")
+        sents = None
+        if not zhipu_key:
+            st.info("配置 AI 后可用自定义场景（见部署指南）")
+        elif not scene.strip():
+            st.info("👆 在上面输入一个场景，就能生成贴合该场景的对话练习")
         else:
+            with st.spinner("AI 正在按你的场景编写对话..."):
+                sents = cached_scene(pw_word, img_context(entry) or pw_word,
+                                     scene.strip(), zhipu_key)
+            if not sents:
+                st.warning("这个场景没生成出来，换个说法再试试～")
+
+        if sents:
             k = display_count(sents)
             for i, ex in enumerate(sents[:k], 1):
                 st.markdown(f"{i}. {cloze(ex['en'], pw_word)}")

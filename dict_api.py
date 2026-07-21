@@ -1,5 +1,7 @@
 # -*- coding: utf-8 -*-
 """词典接口层：联想、查词、图片、发音（全部免费接口，无需注册）"""
+from urllib.parse import quote
+
 import requests
 
 HEADERS = {
@@ -143,3 +145,10 @@ def audio_url(word: str, accent: str = "uk") -> str:
     """
     t = 2 if accent == "us" else 1
     return f"https://dict.youdao.com/dictvoice?audio={word}&type={t}"
+
+
+def google_tts_url(word: str, accent: str = "uk") -> str:
+    """Google 英式合成音，作为有道加载失败时的兜底（任何词都有、发音一致）"""
+    tl = "en-GB" if accent == "uk" else "en-US"
+    return ("https://translate.google.com/translate_tts"
+            f"?ie=UTF-8&client=tw-ob&tl={tl}&q={quote(word)}")

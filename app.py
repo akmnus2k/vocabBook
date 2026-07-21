@@ -277,10 +277,10 @@ def clickable_word(word, sub="", size=26, autoplay=False):
     autoplay=True 时渲染后自动朗读一遍（浏览器拦截自动播放时静默失败，点词即可）
     """
     uk_url = dict_api.audio_url(word, "uk")
-    us_url = dict_api.audio_url(word, "us")
+    fallback_url = dict_api.google_tts_url(word, "uk")
     # 预加载一个 audio 元素：点击时直接播它，避免"现创建 Audio→异步加载→手势过期被拒"
     # （这是手机上点击没声音的根因）。aid 用词做唯一 id，避免多个单词互相干扰。
-    # onerror：英音库缺这个词的录音时，自动换成美音，保证有声音。
+    # onerror：有道加载不出这个词时，自动换成 Google 英式合成音，保证有声音。
     aid = "a_" + re.sub(r"[^a-zA-Z]", "", word)
     auto = f"<script>document.getElementById('{aid}').play().catch(function(){{}});</script>" if autoplay else ""
     sub_html = (f'<span style="font-size:14px;color:#7A8B96;margin-left:10px">'
@@ -288,7 +288,7 @@ def clickable_word(word, sub="", size=26, autoplay=False):
     # 单词加一条浅蓝虚线下划线，暗示"可以点"，不用再写"点我发音"
     components.html(
         f"""<audio id="{aid}" src="{uk_url}" preload="auto"
-              onerror="this.onerror=null;this.src='{us_url}';"></audio>
+              onerror="this.onerror=null;this.src='{fallback_url}';"></audio>
             <div onclick="var a=document.getElementById('{aid}');a.currentTime=0;a.play().catch(function(){{}});"
               title="点击发音"
               style="cursor:pointer;font-family:'Source Sans Pro',sans-serif;
@@ -365,8 +365,9 @@ def word_detail_dialog():
         st.rerun()
 
     clickable_word(e["word"], size=24)
-    if e.get("phone_us"):
-        st.caption(f"美 /{e['phone_us']}/")
+    ph = e.get("phone_uk") or e.get("phone_us")
+    if ph:
+        st.caption(f"英 /{ph}/")
     for d in concise_defs(e["defs"]):
         st.markdown(f"- {d}")
     if e.get("en_defs"):
@@ -433,14 +434,10 @@ with tab_search:
             # 单词标题：点击单词本身就发音
             clickable_word(info["word"], size=28)
 
-            # 音标
-            phones = []
-            if info["phone_us"]:
-                phones.append(f"美 /{info['phone_us']}/")
-            if info["phone_uk"]:
-                phones.append(f"英 /{info['phone_uk']}/")
-            if phones:
-                st.caption("　".join(phones))
+            # 音标：她在澳洲，只显示英式；没有英式才退回美式
+            phone = info["phone_uk"] or info["phone_us"]
+            if phone:
+                st.caption(f"英 /{phone}/")
 
             # 收藏按钮放最上面，手机上一眼就能点到
             if info["word"] in book:

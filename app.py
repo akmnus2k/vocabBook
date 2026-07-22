@@ -291,15 +291,23 @@ def display_count(sents):
     return 3 if len(short) >= 3 else min(len(sents), 2)
 
 
-def _audio_js(word):
-    """生成一段 JS：播有道真人音；加载失败时退回英式(en-GB)语音合成兜底"""
-    word_js = json.dumps(word)  # 安全地转成 JS 字符串字面量
-    src_js = json.dumps(dict_api.audio_url(word))
-    return (f"var a=new Audio({src_js});"
-            f"a.onerror=function(){{"
-            f"var u=new SpeechSynthesisUtterance({word_js});u.lang='en-GB';"
-            f"speechSynthesis.cancel();speechSynthesis.speak(u);}};"
-            f"a.play().catch(function(){{}});")
+def _audio_js(text, sentence=False):
+    """生成一段 JS：按音源链依次尝试播放，全失败才退回浏览器语音合成
+
+    单词链：有道真人音 → 百度合成音（救有道没录音的词组）→ 语音合成
+    整句链：百度合成音 → 语音合成（有道 dictvoice 读不了任意句子）
+    语音合成是最后手段——有的设备（如没装英文语音包的电脑）读不了英文。
+    """
+    text_js = json.dumps(text)  # 安全地转成 JS 字符串字面量
+    srcs = [dict_api.sentence_audio_url(text)] if sentence else \
+           [dict_api.audio_url(text), dict_api.sentence_audio_url(text)]
+    srcs_js = json.dumps(srcs)
+    return (f"var s={srcs_js},i=0;"
+            f"function n(){{if(i>=s.length){{"
+            f"var u=new SpeechSynthesisUtterance({text_js});u.lang='en-GB';"
+            f"speechSynthesis.cancel();speechSynthesis.speak(u);return;}}"
+            f"var a=new Audio(s[i]);i=i+1;a.onerror=n;"
+            f"a.play().catch(function(){{}});}}n();")
 
 
 def clickable_word(word, sub="", size=26, autoplay=False):
@@ -311,7 +319,9 @@ def clickable_word(word, sub="", size=26, autoplay=False):
     """
     # 发音逻辑放进具名函数，onclick 只调用它——否则 JS 里的引号会和
     # onclick="..." 的属性引号打架，把处理器截断成一句残缺代码（点了没反应）
-    script = f"<script>function playWord(){{{_audio_js(word)}}}</script>"
+    # no-referrer：百度音频拒绝带外站 Referer 的请求，不发它就正常返回
+    script = ('<meta name="referrer" content="no-referrer">'
+              f"<script>function playWord(){{{_audio_js(word)}}}</script>")
     auto = "<script>playWord()</script>" if autoplay else ""
     sub_html = (f'<span style="font-size:14px;color:#7A8B96;margin-left:10px">'
                 f'{html_lib.escape(sub)}</span>') if sub else ""
@@ -329,9 +339,10 @@ def clickable_word(word, sub="", size=26, autoplay=False):
     )
 
 
-def speaker_only(word, size=44, autoplay=True):
-    """只放发音、不显示单词——用于「听音辨词」题型。点 🔊 可再听一遍。"""
-    script = f"<script>function playWord(){{{_audio_js(word)}}}</script>"
+def speaker_only(text, size=44, autoplay=True, sentence=False):
+    """只放一个 🔊 图标：点了发音。听音辨词题型和整句朗读都用它。"""
+    script = ('<meta name="referrer" content="no-referrer">'
+              f"<script>function playWord(){{{_audio_js(text, sentence)}}}</script>")
     auto = "<script>playWord()</script>" if autoplay else ""
     components.html(
         f"""{script}<div onclick="playWord()" title="再听一遍"
@@ -354,6 +365,37 @@ def pick_quiz_mode(entry, allowed):
     return random.choice(modes) if modes else "cn"
 
 
+def tappable_sentence(en, zh, prefix=""):
+    """例句渲染成可点的单词条：点哪个词，就在句子下方显示它的释义并朗读
+
+    再点同一个词可取消。词条保持原句顺序、去掉标点、重复词只留一个；
+    完整原句（含标点）和中文翻译放在下方小字里。
+    """
+    tokens, seen = [], set()
+    for raw in en.split():
+        w = raw.strip(".,!?;:\"'()[]“”‘’—").strip()
+        if re.fullmatch(r"[A-Za-z][A-Za-z'-]*", w) and w.lower() not in seen:
+            tokens.append(w)
+            seen.add(w.lower())
+    if not tokens:
+        st.markdown(f"**{en}**")
+        st.caption(zh)
+        return
+    key = f"tap_{prefix}_{abs(hash(en)) % 10 ** 8}"
+    picked = st.pills(en, tokens, selection_mode="single",
+                      label_visibility="collapsed", key=key)
+    st.caption(f"{en}　{zh}")
+    if picked:
+        with st.spinner(""):
+            info = cached_lookup(picked.lower())
+        brief = (simplify_def(info["defs"][0], 2)
+                 if info and info.get("defs") else "没查到这个词的释义")
+        # 只在刚点选时自动朗读一次，之后页面其他操作引起的重跑不再重复出声
+        auto = st.session_state.get(f"{key}_played") != picked
+        st.session_state[f"{key}_played"] = picked
+        clickable_word(picked, sub=brief, size=18, autoplay=auto)
+
+
 def reveal_details(entry, defs=True, example=True):
     """揭晓答案时展示的详情：中文释义 / 英文释义 / 例句 / 图片"""
     if defs:
@@ -363,8 +405,7 @@ def reveal_details(entry, defs=True, example=True):
             st.markdown(f"- *{d}*")
     if example and entry.get("examples"):
         ex = entry["examples"][0]
-        st.markdown(f"**{ex['en']}**")
-        st.caption(ex["zh"])
+        tappable_sentence(ex["en"], ex["zh"], prefix="rv")
     if entry.get("images"):
         st.image(entry["images"][0], width=260)
 
@@ -440,8 +481,7 @@ def word_detail_dialog():
     if e.get("en_defs"):
         st.markdown(f"🗣️ *{e['en_defs'][0]}*")
     for ex in e.get("examples", [])[:1]:
-        st.markdown(f"**{ex['en']}**")
-        st.caption(ex["zh"])
+        tappable_sentence(ex["en"], ex["zh"], prefix="dlg")
     stars = "🌟" * e["level"] + "☆" * (len(storage.INTERVALS) - 1 - e["level"])
     st.caption(f"熟练度 {stars}　|　收藏于 {e['added']}　|　下次复习 {e['next_review']}")
     if st.button("🗑️ 从单词本移除", use_container_width=True):
@@ -560,13 +600,11 @@ with tab_search:
                     info["word"], img_context(info) or info["word"],
                     entry_in_book, get_zhipu_key())
             if clinic:
-                for ex in clinic[:2]:
-                    st.markdown(f"**{ex['en']}**")
-                    st.caption(ex["zh"])
+                for i, ex in enumerate(clinic[:2]):
+                    tappable_sentence(ex["en"], ex["zh"], prefix=f"se{i}")
             elif info["examples"]:
                 ex = info["examples"][0]
-                st.markdown(f"**{ex['en']}**")
-                st.caption(ex["zh"])
+                tappable_sentence(ex["en"], ex["zh"], prefix="se_yd")
             else:
                 st.caption("这个词暂时没有合适的例句")
 
@@ -844,10 +882,19 @@ with tab_practice:
                     st.warning("这个场景没生成出来，换个说法再试试～")
                 else:
                     # 场景对话显示全部（一整段），不再砍成 2-3 句
+                    # 挖空版不配朗读——听整句会把答案念出来
                     for i, ex in enumerate(sents, 1):
                         st.markdown(f"{i}. {cloze(ex['en'], pw_word)}")
                         st.caption(ex["zh"])
                     if st.toggle("👀 显示原句", key="show_cloze_answer"):
                         st.divider()
+                        # 原句版：点 🔊 朗读整句，点句里任意单词看释义听发音
                         for i, ex in enumerate(sents, 1):
-                            st.markdown(f"{i}. {highlight(ex['en'], pw_word)}")
+                            c_sent, c_spk = st.columns([12, 1],
+                                                       vertical_alignment="center")
+                            with c_sent:
+                                tappable_sentence(ex["en"], ex["zh"],
+                                                  prefix=f"sc{i}")
+                            with c_spk:
+                                speaker_only(ex["en"], size=22,
+                                             autoplay=False, sentence=True)

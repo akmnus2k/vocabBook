@@ -145,3 +145,12 @@ def audio_url(word: str, accent: str = "uk") -> str:
     """
     t = 2 if accent == "us" else 1
     return f"https://dict.youdao.com/dictvoice?audio={quote(word)}&type={t}"
+
+
+def sentence_audio_url(text: str) -> str:
+    """整句/词组的合成发音（百度翻译 TTS，英音，免费无需密钥）
+
+    有道 dictvoice 只认词库里有录音的条目（"knee brace" 这种词组都会 500），
+    任意句子要靠这个；单词发音仍然首选有道真人音，这里只做备选和整句朗读。
+    """
+    return f"https://fanyi.baidu.com/gettts?lan=uk&text={quote(text)}&spd=3&source=web"

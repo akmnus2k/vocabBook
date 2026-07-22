@@ -352,6 +352,117 @@ def speaker_only(text, size=44, autoplay=True, sentence=False):
     )
 
 
+# 连播播放器：整个是自包含的 JS 播放器（音频队列在浏览器里跑），不依赖
+# Streamlit 刷新——所以连续播放不会被打断。__PLAYLIST__ 处注入播放列表。
+_PLAYER_HTML = r"""<meta name="referrer" content="no-referrer">
+<style>
+ #pbox{font-family:'Source Sans Pro',sans-serif;background:#EAF4FA;border-radius:14px;
+       padding:14px 16px;color:#3D4F5C;text-align:center}
+ #now{font-size:30px;font-weight:700;line-height:1.2;white-space:nowrap;
+      overflow:hidden;text-overflow:ellipsis}
+ #sub{font-size:14px;color:#5B7183;min-height:20px;margin-top:2px;white-space:nowrap;
+      overflow:hidden;text-overflow:ellipsis}
+ .pbtn{border:none;background:#CDE7F5;color:#2C3E4C;border-radius:50%;width:42px;height:42px;
+       font-size:18px;cursor:pointer;vertical-align:middle;margin:0 5px}
+ .pbtn.big{width:54px;height:54px;font-size:24px;background:#A8D4EA}
+ .pbtn:hover{filter:brightness(0.96)}
+ #opts{font-size:13px;color:#5B7183;display:flex;gap:16px;justify-content:center;margin-top:4px}
+ #opts label{cursor:pointer}
+</style>
+<div id="pbox">
+  <div id="now">—</div>
+  <div id="sub">点 ▶ 开始，自动逐个播放单词和例句</div>
+  <div style="margin:10px 0 6px">
+    <button class="pbtn" id="prev">⏮</button>
+    <button class="pbtn big" id="pp">▶</button>
+    <button class="pbtn" id="next">⏭</button>
+    <span id="prog" style="font-size:13px;color:#5B7183;margin-left:8px">0 / 0</span>
+  </div>
+  <div id="opts">
+    <label><input type="checkbox" id="sent" checked> 含例句</label>
+    <label><input type="checkbox" id="loop" checked> 循环</label>
+    <label><input type="checkbox" id="shuf"> 随机</label>
+  </div>
+</div>
+<script>
+var LIST=__PLAYLIST__;
+var order=[],idx=0,phase='w',playing=false,cur=null,timer=null;
+var $=function(id){return document.getElementById(id);};
+function shuffle(a){for(var i=a.length-1;i>0;i--){var j=Math.floor(Math.random()*(i+1));var t=a[i];a[i]=a[j];a[j]=t;}return a;}
+function build(){order=LIST.map(function(_,i){return i;});if($('shuf').checked)shuffle(order);}
+function it(){return LIST[order[idx]];}
+function render(){
+  if(!order.length)return;
+  var x=it();
+  $('now').textContent=x.w;
+  $('sub').textContent=(phase==='s'&&x.s)?('💬 '+x.s):(x.d?('🔊 '+x.d):'🔊');
+  $('prog').textContent=(idx+1)+' / '+order.length;
+  $('pp').textContent=playing?'⏸':'▶';
+}
+function stopAudio(){if(cur){cur.onended=null;cur.onerror=null;try{cur.pause();}catch(e){}cur=null;}if(timer){clearTimeout(timer);timer=null;}}
+function playUrls(urls,onEnd){
+  var k=0;
+  (function one(){
+    if(!playing)return;
+    if(k>=urls.length){onEnd();return;}
+    var a=new Audio(urls[k]);k++;cur=a;
+    a.onerror=function(){one();};
+    a.onended=function(){cur=null;onEnd();};
+    a.play().catch(function(){});
+  })();
+}
+function afterWord(){
+  if(!playing)return;
+  var x=it();
+  if($('sent').checked&&x.s){phase='s';render();timer=setTimeout(function(){playUrls([x.su],afterSent);},350);}
+  else afterSent();
+}
+function afterSent(){if(playing)timer=setTimeout(nextWord,500);}
+function nextWord(){
+  if(!playing)return;
+  if(idx<order.length-1)idx++;
+  else if($('loop').checked){idx=0;build();}
+  else{playing=false;render();return;}
+  phase='w';render();step();
+}
+function step(){
+  if(!playing||!order.length)return;
+  var x=it();
+  if(phase==='s')playUrls([x.su],afterSent);
+  else playUrls(x.wu,afterWord);
+}
+$('pp').onclick=function(){
+  if(playing){playing=false;stopAudio();render();return;}
+  if(!order.length)build();
+  playing=true;render();step();
+};
+$('prev').onclick=function(){stopAudio();idx=Math.max(0,idx-1);phase='w';render();if(playing)step();};
+$('next').onclick=function(){stopAudio();if(idx<order.length-1)idx++;else if($('loop').checked){idx=0;build();}phase='w';render();if(playing)step();};
+$('shuf').onchange=function(){stopAudio();idx=0;build();phase='w';render();if(playing)step();};
+build();render();
+</script>"""
+
+
+def audio_player(entries):
+    """把词条列表做成一个连播播放器：逐个播'单词发音 + 例句发音'，可循环/随机"""
+    playlist = []
+    for e in entries:
+        item = {
+            "w": e["word"],
+            "d": simplify_def(e["defs"][0], 1) if e.get("defs") else "",
+            "wu": [dict_api.audio_url(e["word"]),
+                   dict_api.sentence_audio_url(e["word"])],
+        }
+        exs = e.get("dialogues") or e.get("examples")
+        if exs:
+            item["s"] = exs[0]["en"]
+            item["su"] = dict_api.sentence_audio_url(exs[0]["en"])
+        playlist.append(item)
+    html = _PLAYER_HTML.replace("__PLAYLIST__",
+                                json.dumps(playlist, ensure_ascii=False))
+    components.html(html, height=210)
+
+
 # 复习题型：cn 看词想义、en 看义猜词、cloze 例句填空、listen 听音辨词
 QUIZ_LABELS = {"看词想义": "cn", "看义猜词": "en",
                "例句填空": "cloze", "听音辨词": "listen"}
@@ -685,6 +796,10 @@ with tab_book:
             entries = sorted(book.values(), key=lambda x: x["added"])
         if desc:
             entries = entries[::-1]
+
+        # 连播播放器：磨耳朵用，按当前排序逐个播单词+例句，可循环/随机
+        with st.expander(f"🎧 循环播放（{len(entries)} 个单词）"):
+            audio_player(entries)
 
         # 每行：点单词发音，点 ⋮ 打开详情内页（内页里可以左右切换单词）
         sorted_words = [e["word"] for e in entries]

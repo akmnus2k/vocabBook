@@ -799,12 +799,14 @@ with tab_book:
                     f"🌱 今日待复习 **{len(storage.due_words(book))}**")
 
         # 第二行：排序方式 + 正序/倒序
-        s1, s2 = st.columns([3, 1])
-        sort_by = s1.radio(
+        # 用 pills（不是并排列里的 radio）——窄屏上选项会自然折行、不会和
+        # 倒序开关挤在一起错位；倒序单独占一行
+        sort_by = st.pills(
             "排序", ["🕐 时间", "🔤 字母", "🌱 熟练度"],
-            horizontal=True, label_visibility="collapsed",
-        )
-        desc = s2.toggle("倒序", value=(sort_by == "🕐 时间"))
+            default="🕐 时间", selection_mode="single",
+            label_visibility="collapsed") or "🕐 时间"
+        desc = st.toggle("倒序（最新 / 最熟的排前面）",
+                         value=(sort_by == "🕐 时间"))
 
         if sort_by == "🔤 字母":
             entries = sorted(book.values(), key=lambda x: x["word"].lower())

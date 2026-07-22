@@ -299,8 +299,9 @@ def _audio_js(text, sentence=False):
     语音合成是最后手段——有的设备（如没装英文语音包的电脑）读不了英文。
     """
     text_js = json.dumps(text)  # 安全地转成 JS 字符串字面量
-    srcs = [dict_api.sentence_audio_url(text)] if sentence else \
-           [dict_api.audio_url(text), dict_api.sentence_audio_url(text)]
+    # 一律先试有道真人音、再退百度合成音：有道能读的短语/短句就用真人音，
+    # 读不了的（如整段 AI 例句）自动降级百度。sentence 参数保留以备将来区分。
+    srcs = [dict_api.audio_url(text), dict_api.sentence_audio_url(text)]
     srcs_js = json.dumps(srcs)
     return (f"var s={srcs_js},i=0;"
             f"function n(){{if(i>=s.length){{"
@@ -391,6 +392,14 @@ var $=function(id){return document.getElementById(id);};
 function shuffle(a){for(var i=a.length-1;i>0;i--){var j=Math.floor(Math.random()*(i+1));var t=a[i];a[i]=a[j];a[j]=t;}return a;}
 function build(){order=LIST.map(function(_,i){return i;});if($('shuf').checked)shuffle(order);}
 function it(){return LIST[order[idx]];}
+function media(){
+  if(!('mediaSession' in navigator)||!order.length)return;
+  var x=it();
+  try{
+    navigator.mediaSession.metadata=new MediaMetadata({title:x.w,artist:(x.d||'PT 单词本'),album:'PT 单词本 · 循环播放'});
+    navigator.mediaSession.playbackState=playing?'playing':'paused';
+  }catch(e){}
+}
 function render(){
   if(!order.length)return;
   var x=it();
@@ -398,6 +407,7 @@ function render(){
   $('sub').textContent=(phase==='s'&&x.s)?('💬 '+x.s):(x.d?('🔊 '+x.d):'🔊');
   $('prog').textContent=(idx+1)+' / '+order.length;
   $('pp').textContent=playing?'⏸':'▶';
+  media();
 }
 function stopAudio(){if(cur){cur.onended=null;cur.onerror=null;try{cur.pause();}catch(e){}cur=null;}if(timer){clearTimeout(timer);timer=null;}}
 function playUrls(urls,onEnd){
@@ -414,7 +424,7 @@ function playUrls(urls,onEnd){
 function afterWord(){
   if(!playing)return;
   var x=it();
-  if($('sent').checked&&x.s){phase='s';render();timer=setTimeout(function(){playUrls([x.su],afterSent);},350);}
+  if($('sent').checked&&x.s){phase='s';render();timer=setTimeout(function(){playUrls(x.su,afterSent);},350);}
   else afterSent();
 }
 function afterSent(){if(playing)timer=setTimeout(nextWord,500);}
@@ -428,7 +438,7 @@ function nextWord(){
 function step(){
   if(!playing||!order.length)return;
   var x=it();
-  if(phase==='s')playUrls([x.su],afterSent);
+  if(phase==='s')playUrls(x.su,afterSent);
   else playUrls(x.wu,afterWord);
 }
 $('pp').onclick=function(){
@@ -439,6 +449,13 @@ $('pp').onclick=function(){
 $('prev').onclick=function(){stopAudio();idx=Math.max(0,idx-1);phase='w';render();if(playing)step();};
 $('next').onclick=function(){stopAudio();if(idx<order.length-1)idx++;else if($('loop').checked){idx=0;build();}phase='w';render();if(playing)step();};
 $('shuf').onchange=function(){stopAudio();idx=0;build();phase='w';render();if(playing)step();};
+// 锁屏/通知栏的媒体控制（安卓上还能帮助维持后台播放；iOS 支持有限）
+if('mediaSession' in navigator){try{
+  navigator.mediaSession.setActionHandler('play',function(){if(!playing){if(!order.length)build();playing=true;render();step();}});
+  navigator.mediaSession.setActionHandler('pause',function(){playing=false;stopAudio();render();});
+  navigator.mediaSession.setActionHandler('previoustrack',function(){$('prev').click();});
+  navigator.mediaSession.setActionHandler('nexttrack',function(){$('next').click();});
+}catch(e){}}
 build();render();
 </script>"""
 
@@ -456,7 +473,9 @@ def audio_player(entries):
         exs = e.get("dialogues") or e.get("examples")
         if exs:
             item["s"] = exs[0]["en"]
-            item["su"] = dict_api.sentence_audio_url(exs[0]["en"])
+            # 例句同样先试有道真人音、再退百度
+            item["su"] = [dict_api.audio_url(exs[0]["en"]),
+                          dict_api.sentence_audio_url(exs[0]["en"])]
         playlist.append(item)
     html = _PLAYER_HTML.replace("__PLAYLIST__",
                                 json.dumps(playlist, ensure_ascii=False))

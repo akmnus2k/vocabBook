@@ -623,26 +623,25 @@ def word_detail_dialog():
 if st.session_state.pop("dlg_open", False):
     word_detail_dialog()
 
-# 标题行：右侧挂两个小图标按钮——刷新（多设备同步）和导出 CSV，不占正文空间
-c_title, c_sync, c_csv = st.columns([5, 1, 1], vertical_alignment="center")
-c_title.markdown("##### 📗 PT 单词本")
-if c_sync.button("🔄", help="刷新：拉取其他设备上的最新数据"):
-    st.session_state.book = storage.load_book()
-    st.session_state.history = storage.load_history()
-    st.rerun()
-c_csv.download_button(
-    "⬇️",
-    pd.DataFrame(
-        [{"单词": e["word"],
-          "释义": "；".join(e["defs"]),
-          "收藏日期": e["added"],
-          "熟练度": e["level"],
-          "下次复习": e["next_review"]} for e in book.values()]
-    ).to_csv(index=False).encode("utf-8-sig"),
-    file_name=f"单词本_{storage.today_iso()}.csv",
-    help="导出 CSV",
-    disabled=not book,
-)
+# 标题即导出入口：点「📗 PT 单词本」弹出导出面板。刷新按钮去掉——每次进
+# 页面都会自动读最新数据，要多设备同步刷新整个页面即可。
+with st.popover("📗 PT 单词本"):
+    if book:
+        st.download_button(
+            "⬇️ 导出为 CSV",
+            pd.DataFrame(
+                [{"单词": e["word"],
+                  "释义": "；".join(e["defs"]),
+                  "收藏日期": e["added"],
+                  "熟练度": e["level"],
+                  "下次复习": e["next_review"]} for e in book.values()]
+            ).to_csv(index=False).encode("utf-8-sig"),
+            file_name=f"单词本_{storage.today_iso()}.csv",
+            use_container_width=True,
+        )
+        st.caption(f"共 {len(book)} 个单词，含释义 / 收藏日期 / 熟练度")
+    else:
+        st.caption("单词本还空着，收藏几个词就能导出啦～")
 tab_search, tab_book, tab_review, tab_practice = st.tabs(
     ["🔍 查单词", "📒 我的单词本", "🌱 复习", "🎯 场景练习"])
 
@@ -798,9 +797,9 @@ with tab_book:
         st.markdown(f"📚 共 **{len(book)}** 个单词　·　"
                     f"🌱 今日待复习 **{len(storage.due_words(book))}**")
 
-        # 第二行：排序下拉靠左、倒序开关靠右、中间留白——两端对齐，和标题行
-        # "标题在左 + 按钮在右上"的结构呼应，不再是占满大半屏的长条
-        c_sort, _sp, c_desc = st.columns([5, 3, 4], vertical_alignment="center")
+        # 第二行：排序下拉 + 倒序开关都靠左聚拢、右侧留白，和上面统计行的
+        # 左对齐风格一致；倒序紧跟下拉，不再孤零零贴在最右
+        c_sort, c_desc, _sp = st.columns([3, 2, 3], vertical_alignment="center")
         sort_by = c_sort.selectbox(
             "排序", ["🕐 时间", "🔤 字母", "🌱 熟练度"],
             label_visibility="collapsed")

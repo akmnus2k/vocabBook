@@ -798,15 +798,13 @@ with tab_book:
         st.markdown(f"📚 共 **{len(book)}** 个单词　·　"
                     f"🌱 今日待复习 **{len(storage.due_words(book))}**")
 
-        # 第二行：排序方式 + 正序/倒序
-        # 用 pills（不是并排列里的 radio）——窄屏上选项会自然折行、不会和
-        # 倒序开关挤在一起错位；倒序单独占一行
-        sort_by = st.pills(
+        # 第二行：三种排序收进一个下拉，配倒序开关，一行搞定、省空间
+        c_sort, c_desc = st.columns([2, 1], vertical_alignment="center")
+        sort_by = c_sort.selectbox(
             "排序", ["🕐 时间", "🔤 字母", "🌱 熟练度"],
-            default="🕐 时间", selection_mode="single",
-            label_visibility="collapsed") or "🕐 时间"
-        desc = st.toggle("倒序（最新 / 最熟的排前面）",
-                         value=(sort_by == "🕐 时间"))
+            label_visibility="collapsed")
+        desc = c_desc.toggle("倒序", value=(sort_by == "🕐 时间"),
+                             help="最新 / 最熟的排前面")
 
         if sort_by == "🔤 字母":
             entries = sorted(book.values(), key=lambda x: x["word"].lower())

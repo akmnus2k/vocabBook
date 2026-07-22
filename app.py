@@ -798,13 +798,13 @@ with tab_book:
         st.markdown(f"📚 共 **{len(book)}** 个单词　·　"
                     f"🌱 今日待复习 **{len(storage.due_words(book))}**")
 
-        # 第二行：三种排序收进一个下拉，配倒序开关，一行搞定、省空间
-        c_sort, c_desc = st.columns([2, 1], vertical_alignment="center")
+        # 第二行：排序下拉靠左、倒序开关靠右、中间留白——两端对齐，和标题行
+        # "标题在左 + 按钮在右上"的结构呼应，不再是占满大半屏的长条
+        c_sort, _sp, c_desc = st.columns([5, 3, 4], vertical_alignment="center")
         sort_by = c_sort.selectbox(
             "排序", ["🕐 时间", "🔤 字母", "🌱 熟练度"],
             label_visibility="collapsed")
-        desc = c_desc.toggle("倒序", value=(sort_by == "🕐 时间"),
-                             help="最新 / 最熟的排前面")
+        desc = c_desc.toggle("倒序", value=(sort_by == "🕐 时间"))
 
         if sort_by == "🔤 字母":
             entries = sorted(book.values(), key=lambda x: x["word"].lower())

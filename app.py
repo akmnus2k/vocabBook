@@ -591,7 +591,6 @@ def word_detail_dialog():
         st.rerun()
 
     # 最下排：左右切换上一个/下一个单词
-    st.divider()
     nav_l, nav_mid, nav_r = st.columns([1, 2, 1], vertical_alignment="center")
     if nav_l.button("⬅️", disabled=(idx == 0), use_container_width=True):
         st.session_state.dlg_idx = idx - 1

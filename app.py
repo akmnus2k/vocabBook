@@ -804,16 +804,18 @@ with tab_book:
         with st.expander(f"🎧 循环播放（{len(entries)} 个单词）"):
             audio_player(entries)
 
-        # 每行：点单词发音，点 ⋮ 打开详情内页（内页里可以左右切换单词）
+        # 每行：点单词发音；点右边的释义打开详情内页（内页里可左右切换单词）
         sorted_words = [e["word"] for e in entries]
         for i, e in enumerate(entries):
-            c_word, c_more = st.columns([8, 1])
+            c_word, c_def = st.columns([3, 2], vertical_alignment="center")
             with c_word:
-                clickable_word(e["word"],
-                               sub=simplify_def(e["defs"][0], 2) if e["defs"] else "",
-                               size=19)
-            with c_more:
-                if st.button("⋮", key=f"more_{e['word']}"):
+                clickable_word(e["word"], size=19)
+            with c_def:
+                brief = simplify_def(e["defs"][0], 2) if e["defs"] else "查看详情"
+                brief = brief[:9] + "…" if len(brief) > 9 else brief
+                # tertiary 文本按钮：看着像释义文字，点它打开详情
+                if st.button(brief, key=f"def_{e['word']}", type="tertiary",
+                             use_container_width=True):
                     st.session_state.dlg_words = sorted_words
                     st.session_state.dlg_idx = i
                     st.session_state.dlg_open = True

@@ -243,18 +243,29 @@ def start_pregen(word, zh, api_key):
                          args=(word, zh, api_key), daemon=True).start()
 
 
-def get_dialogues(word, zh, entry, api_key):
-    """拿一个词的诊室对话：已存好的秒回，否则现场生成（并存回已收藏的词）"""
+def get_dialogues(word, zh, entry, api_key, hist_entry=None):
+    """拿一个词的诊室对话：已存好的秒回，否则现场生成并存起来
+
+    entry：单词本词条（收藏过才有）；hist_entry：搜索历史记录（查过就有）。
+    两处都能持久化对话——这样没收藏、只查过的词，再查也是同一批例句，不会每次重生成。
+    """
     ver = ai_dialogue.PROMPT_VERSION
-    if entry and entry.get("dialogues") and entry.get("dialogues_ver") == ver:
-        return entry["dialogues"]
+    for e in (entry, hist_entry):
+        if e and e.get("dialogues") and e.get("dialogues_ver") == ver:
+            return e["dialogues"]
     if not api_key:
         return None
     d = cached_ai_dialogues(word, zh, api_key, ver)
-    if d and entry is not None:  # 已收藏的词顺手存回，下次秒开
+    if not d:
+        return None
+    if entry is not None:  # 已收藏 → 存进单词本词条
         entry["dialogues"] = d
         entry["dialogues_ver"] = ver
         storage.save_book(book)
+    if hist_entry is not None:  # 存进搜索历史，没收藏的词再查也稳定
+        hist_entry["dialogues"] = d
+        hist_entry["dialogues_ver"] = ver
+        storage.save_history(history)
     return d
 
 
@@ -771,10 +782,14 @@ with tab_search:
             # 应用例句：优先诊室对话（口语、贴近工作），生成不出来才退回有道例句
             st.markdown("#### 例句 · 应用场景")
             entry_in_book = book.get(info["word"])
+            # 确保历史里有这个词的记录，好把例句存进去（下次查同一个词直接读、不再重生成）
+            if info["word"] not in history:
+                history[info["word"]] = {"word": info["word"], "count": 0,
+                                         "first": storage.today_iso()}
             with st.spinner("加载例句..."):
                 clinic = get_dialogues(
                     info["word"], img_context(info) or info["word"],
-                    entry_in_book, get_ai_key())
+                    entry_in_book, get_ai_key(), hist_entry=history[info["word"]])
             if clinic:
                 for i, ex in enumerate(clinic[:2]):
                     tappable_sentence(ex["en"], ex["zh"], prefix=f"se{i}")
@@ -797,10 +812,9 @@ with tab_search:
                         st.markdown(f"**{ex['en']}**")
                         st.caption(ex["zh"])
 
-            # 相关图片：用 Kimi 生成的中文搜索词搜（比直接搜英文词准），只取一张
-            kq = (get_image_query(info["word"], img_context(info) or info["word"],
-                                  book.get(info["word"]), get_ai_key())
-                  or img_context(info))
+            # 相关图片：直接用纯医学中文词搜（实测比 AI 加工过的搜索词更准，
+            # AI 爱加"示意图/康复训练"这类修饰反而搜偏），只取一张
+            kq = img_context(info) or info["word"]
             first = st.session_state.get(f"img_first_{target}", 1)
             imgs = cached_images(kq, "", first)
             if imgs:
@@ -1057,9 +1071,8 @@ with tab_practice:
             zh = img_context(src) or pw_word
             entry = book.get(pw_word)  # 在单词本里才把场景对话缓存进 Sheet
 
-            # 相关图片：看图记词更直观（和查词页同一套搜图逻辑）
-            kq = get_image_query(pw_word, zh, entry, ai_key) or zh
-            imgs = cached_images(kq, "")
+            # 相关图片：直接用纯医学中文词搜（和查词页一致，最准）
+            imgs = cached_images(zh or pw_word, "")
             if imgs:
                 st.image(imgs[0], width=260)
 

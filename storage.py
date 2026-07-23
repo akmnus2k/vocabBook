@@ -169,6 +169,11 @@ def load_history() -> dict:
     return _load_dict("search_history", HIST_FILE)
 
 
+def save_history(history: dict):
+    """整份写回搜索历史（例句缓存等改动后调用）"""
+    _save_dict(history, "search_history", HIST_FILE)
+
+
 def record_history(history: dict, word: str, brief: str):
     """记一笔搜索历史（同一个词多次查会累计次数）"""
     today = today_iso()

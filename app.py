@@ -498,34 +498,17 @@ def pick_quiz_mode(entry, allowed):
 
 
 def tappable_sentence(en, zh, prefix=""):
-    """例句渲染成可点的单词条：点哪个词，就在句子下方显示它的释义并朗读
+    """例句：整句正常显示，左侧一个小喇叭朗读整句
 
-    再点同一个词可取消。词条保持原句顺序、去掉标点、重复词只留一个；
-    完整原句（含标点）和中文翻译放在下方小字里。
+    喇叭走"有道真人音优先、百度合成音兜底"——整句一般走百度。
+    prefix 参数保留是为了兼容旧调用，现已不再需要。
     """
-    tokens, seen = [], set()
-    for raw in en.split():
-        w = raw.strip(".,!?;:\"'()[]“”‘’—").strip()
-        if re.fullmatch(r"[A-Za-z][A-Za-z'-]*", w) and w.lower() not in seen:
-            tokens.append(w)
-            seen.add(w.lower())
-    if not tokens:
+    c_spk, c_txt = st.columns([1, 9], vertical_alignment="center")
+    with c_spk:
+        speaker_only(en, size=20, autoplay=False, sentence=True)
+    with c_txt:
         st.markdown(f"**{en}**")
         st.caption(zh)
-        return
-    key = f"tap_{prefix}_{abs(hash(en)) % 10 ** 8}"
-    picked = st.pills(en, tokens, selection_mode="single",
-                      label_visibility="collapsed", key=key)
-    st.caption(f"{en}　{zh}")
-    if picked:
-        with st.spinner(""):
-            info = cached_lookup(picked.lower())
-        brief = (simplify_def(info["defs"][0], 2)
-                 if info and info.get("defs") else "没查到这个词的释义")
-        # 只在刚点选时自动朗读一次，之后页面其他操作引起的重跑不再重复出声
-        auto = st.session_state.get(f"{key}_played") != picked
-        st.session_state[f"{key}_played"] = picked
-        clickable_word(picked, sub=brief, size=18, autoplay=auto)
 
 
 def reveal_details(entry, defs=True, example=True):
@@ -1023,13 +1006,6 @@ with tab_practice:
                         st.caption(ex["zh"])
                     if st.toggle("👀 显示原句", key="show_cloze_answer"):
                         st.divider()
-                        # 原句版：点 🔊 朗读整句，点句里任意单词看释义听发音
-                        for i, ex in enumerate(sents, 1):
-                            c_sent, c_spk = st.columns([12, 1],
-                                                       vertical_alignment="center")
-                            with c_sent:
-                                tappable_sentence(ex["en"], ex["zh"],
-                                                  prefix=f"sc{i}")
-                            with c_spk:
-                                speaker_only(ex["en"], size=22,
-                                             autoplay=False, sentence=True)
+                        # 原句版：整句显示，点 🔊 朗读整句
+                        for ex in sents:
+                            tappable_sentence(ex["en"], ex["zh"])

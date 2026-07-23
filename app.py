@@ -1071,11 +1071,6 @@ with tab_practice:
             zh = img_context(src) or pw_word
             entry = book.get(pw_word)  # 在单词本里才把场景对话缓存进 Sheet
 
-            # 相关图片：直接用纯医学中文词搜（和查词页一致，最准）
-            imgs = cached_images(zh or pw_word, "")
-            if imgs:
-                st.image(imgs[0], width=260)
-
             # 自动为这个词最贴合的 2 个常见场景生成对话，不用手动选
             for scene in recommend_scenes(src)[:2]:
                 with st.spinner(f"生成「{scene}」对话…"):

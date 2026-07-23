@@ -147,10 +147,19 @@ def audio_url(word: str, accent: str = "uk") -> str:
     return f"https://dict.youdao.com/dictvoice?audio={quote(word)}&type={t}"
 
 
+def google_tts_url(text: str) -> str:
+    """Google 翻译英式合成音——比百度合成音更自然流畅，用于整句/词组朗读。
+
+    需要 no-referrer（Google 拒绝带外站 Referer 的请求），发音组件已声明；
+    长度上限约 200 字符，超了会失败、自动降级到百度。
+    """
+    return ("https://translate.google.com/translate_tts?ie=UTF-8&client=tw-ob"
+            f"&tl=en-GB&q={quote(text)}")
+
+
 def sentence_audio_url(text: str) -> str:
     """整句/词组的合成发音（百度翻译 TTS，英音，免费无需密钥）
 
-    有道 dictvoice 只认词库里有录音的条目（"knee brace" 这种词组都会 500），
-    任意句子要靠这个；单词发音仍然首选有道真人音，这里只做备选和整句朗读。
+    作为 Google 合成音的兜底：Google 读不了（超长/不通）时用它，保证有声。
     """
     return f"https://fanyi.baidu.com/gettts?lan=uk&text={quote(text)}&spd=3&source=web"

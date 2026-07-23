@@ -314,14 +314,18 @@ def display_count(sents):
 def _audio_js(text, sentence=False):
     """生成一段 JS：按音源链依次尝试播放，全失败才退回浏览器语音合成
 
-    单词链：有道真人音 → 百度合成音（救有道没录音的词组）→ 语音合成
-    整句链：百度合成音 → 语音合成（有道 dictvoice 读不了任意句子）
+    单词链：有道真人音 → Google 合成音 → 百度合成音 → 语音合成
+    整句链：Google 合成音 → 百度合成音 → 语音合成
+      （有道 dictvoice 读不了任意整句，跳过它省一次失败等待；Google 比百度
+       自然流畅，作整句首选，读不了时才退百度。）
     语音合成是最后手段——有的设备（如没装英文语音包的电脑）读不了英文。
     """
     text_js = json.dumps(text)  # 安全地转成 JS 字符串字面量
-    # 一律先试有道真人音、再退百度合成音：有道能读的短语/短句就用真人音，
-    # 读不了的（如整段 AI 例句）自动降级百度。sentence 参数保留以备将来区分。
-    srcs = [dict_api.audio_url(text), dict_api.sentence_audio_url(text)]
+    if sentence:
+        srcs = [dict_api.google_tts_url(text), dict_api.sentence_audio_url(text)]
+    else:
+        srcs = [dict_api.audio_url(text), dict_api.google_tts_url(text),
+                dict_api.sentence_audio_url(text)]
     srcs_js = json.dumps(srcs)
     return (f"var s={srcs_js},i=0;"
             f"function n(){{if(i>=s.length){{"

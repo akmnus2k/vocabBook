@@ -158,7 +158,28 @@ def img_context(info):
 
 @st.cache_data(ttl=3600, show_spinner=False)
 def cached_images(word, context="", first=1):
-    return dict_api.get_images(word, n=3, context=context, first=first)
+    # 只取 1 张最相关的（医学词图片杂，多张反而混入不相干的）
+    return dict_api.get_images(word, n=1, context=context, first=first)
+
+
+@st.cache_data(ttl=7 * 86400, show_spinner=False)
+def cached_image_query(word, zh, api_key, ver):
+    return ai_dialogue.image_query(word, zh, api_key)
+
+
+def get_image_query(word, zh, entry, api_key):
+    """图片搜索关键词：词条缓存过就用，否则 Kimi 生成一个并存回词条"""
+    ver = ai_dialogue.IMG_QUERY_VERSION
+    if entry and entry.get("img_query") and entry.get("img_query_ver") == ver:
+        return entry["img_query"]
+    if not api_key:
+        return None
+    q = cached_image_query(word, zh, api_key, ver)
+    if q and entry is not None:
+        entry["img_query"] = q
+        entry["img_query_ver"] = ver
+        storage.save_book(book)
+    return q
 
 
 # PT 场景例句一天内不会变，缓存久一点
@@ -722,10 +743,16 @@ with tab_search:
             else:
                 if st.button("⭐ 收藏到单词本", type="primary",
                              use_container_width=True):
+                    # 用 Kimi 搜索词搜、存一张最相关的图，和查词页显示的一致
+                    kq = (get_image_query(info["word"],
+                                          img_context(info) or info["word"],
+                                          None, get_ai_key())
+                          or img_context(info))
                     imgs_for_save = cached_images(
-                        info["word"], img_context(info),
-                        st.session_state.get(f"img_first_{target}", 1))
-                    storage.add_word(book, info, imgs_for_save)
+                        kq, "", st.session_state.get(f"img_first_{target}", 1))
+                    info_with_q = {**info, "img_query": kq,
+                                   "img_query_ver": ai_dialogue.IMG_QUERY_VERSION}
+                    storage.add_word(book, info_with_q, imgs_for_save)
                     # 收藏的同时后台把诊室对话先生成好，之后练习秒开
                     start_pregen(info["word"], img_context(info) or info["word"],
                                  get_ai_key())
@@ -770,17 +797,17 @@ with tab_search:
                         st.markdown(f"**{ex['en']}**")
                         st.caption(ex["zh"])
 
-            # 相关图片（带上中文释义一起搜，图片更贴合词义）
+            # 相关图片：用 Kimi 生成的中文搜索词搜（比直接搜英文词准），只取一张
+            kq = (get_image_query(info["word"], img_context(info) or info["word"],
+                                  book.get(info["word"]), get_ai_key())
+                  or img_context(info))
             first = st.session_state.get(f"img_first_{target}", 1)
-            imgs = cached_images(info["word"], img_context(info), first)
+            imgs = cached_images(kq, "", first)
             if imgs:
                 st.markdown("#### 相关图片")
-                cols = st.columns(len(imgs))
-                for col, url in zip(cols, imgs):
-                    with col:
-                        st.image(url, use_container_width=True)
-                if st.button("🔄 换一批图片"):
-                    st.session_state[f"img_first_{target}"] = first + 12
+                st.image(imgs[0], width=260)
+                if st.button("🔄 换一张"):
+                    st.session_state[f"img_first_{target}"] = first + 1
                     st.rerun()
 
     # 搜索历史：只显示今天查过的词（完整历史仍然都存着）

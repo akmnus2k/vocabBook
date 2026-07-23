@@ -128,6 +128,8 @@ def add_word(book: dict, info: dict, images: list):
         "en_defs": info.get("en_defs", []),
         "examples": info.get("examples", []),
         "images": images,
+        "img_query": info.get("img_query", ""),
+        "img_query_ver": info.get("img_query_ver", 0),
         "added": today,
         "level": 0,
         "next_review": today,

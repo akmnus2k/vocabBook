@@ -123,3 +123,44 @@ def generate_scene(word: str, zh: str, scene: str, api_key: str, n: int = 3):
         return None
     return _call(SCENE_PROMPT.format(word=word, zh=zh, scene=scene.strip()),
                  api_key, n)
+
+
+# 图片搜索词的版本号：改了 IMG_QUERY_PROMPT 就 +1，让缓存失效重新生成
+IMG_QUERY_VERSION = 1
+
+IMG_QUERY_PROMPT = """你是物理治疗老师，要给学生配一张示意图。英文单词\
+「{word}」（中文含义：{zh}）最适合用什么中文关键词去图片搜索，才能搜到\
+直观、相关的图？——比如它对应的临床检查动作、康复训练、解剖部位，或典型\
+体态/表现的样子。只回一个简短中文短语（4~12 字），不要标点、不要引号、\
+不要解释。"""
+
+
+def _call_text(prompt_text, api_key):
+    """调 AI 返回一段纯文本，失败返回 None"""
+    try:
+        r = requests.post(
+            API_URL,
+            headers={"Authorization": f"Bearer {api_key}"},
+            json={
+                "model": MODEL,
+                "messages": [{"role": "user", "content": prompt_text}],
+                "temperature": 0.6,
+                "thinking": {"type": "disabled"},
+            },
+            timeout=20,
+        )
+        return r.json()["choices"][0]["message"]["content"].strip()
+    except Exception:
+        return None
+
+
+def image_query(word: str, zh: str, api_key: str):
+    """给单词生成一个更能搜到相关图片的中文关键词，失败返回 None"""
+    if not api_key:
+        return None
+    q = _call_text(IMG_QUERY_PROMPT.format(word=word, zh=zh), api_key)
+    if not q:
+        return None
+    # 只取第一行、去掉引号/标点/多余空白，限个长度
+    q = q.splitlines()[0].strip().strip('"\'“”。，、 ')
+    return q[:20] or None

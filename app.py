@@ -519,9 +519,10 @@ def reveal_details(entry, defs=True, example=True):
             st.markdown(f"- {d}")
         for d in entry.get("en_defs", [])[:1]:
             st.markdown(f"- *{d}*")
-    if example and entry.get("examples"):
-        ex = entry["examples"][0]
-        tappable_sentence(ex["en"], ex["zh"], prefix="rv")
+    # 优先 AI 诊室例句（翻译贴近场景、质量稳定），没有才退回有道例句库
+    exs = entry.get("dialogues") or entry.get("examples")
+    if example and exs:
+        tappable_sentence(exs[0]["en"], exs[0]["zh"], prefix="rv")
     if entry.get("images"):
         st.image(entry["images"][0], width=260)
 
@@ -582,7 +583,9 @@ def word_detail_dialog():
         st.markdown(f"- {d}")
     if e.get("en_defs"):
         st.markdown(f"🗣️ *{e['en_defs'][0]}*")
-    for ex in e.get("examples", [])[:1]:
+    # 优先 AI 诊室例句（翻译贴近场景、质量稳定），没有才退回有道例句库
+    exs = e.get("dialogues") or e.get("examples") or []
+    for ex in exs[:1]:
         tappable_sentence(ex["en"], ex["zh"], prefix="dlg")
     stars = "🌟" * e["level"] + "☆" * (len(storage.INTERVALS) - 1 - e["level"])
     st.caption(f"熟练度 {stars}　|　收藏于 {e['added']}　|　下次复习 {e['next_review']}")

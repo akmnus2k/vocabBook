@@ -184,6 +184,25 @@ def cached_scene(word, zh, scene, api_key, ver):
     return ai_dialogue.generate_scene(word, zh, scene, api_key)
 
 
+def get_scene(word, zh, scene, entry, api_key):
+    """场景对话：词条里缓存过（存进 Sheet）就秒回，否则生成并存回词条"""
+    ver = ai_dialogue.SCENE_VERSION
+    if entry and entry.get("scenes_ver") == ver:
+        cached = entry.get("scenes", {}).get(scene)
+        if cached:
+            return cached
+    if not api_key:
+        return None
+    d = cached_scene(word, zh, scene, api_key, ver)
+    if d and entry is not None:  # 已收藏的词把这个场景存进 Sheet，下次秒开
+        if entry.get("scenes_ver") != ver:
+            entry["scenes"] = {}
+            entry["scenes_ver"] = ver
+        entry.setdefault("scenes", {})[scene] = d
+        storage.save_book(book)
+    return d
+
+
 def pregen_dialogues(word, zh, api_key):
     """后台生成诊室对话并存进词条（收藏后台调用，不阻塞界面）"""
     d = ai_dialogue.generate_dialogues(word, zh, api_key)
@@ -965,11 +984,22 @@ with tab_review:
 
 
 # ============ 场景练习 ============
+def render_scene(scene_name, sents, word, key):
+    """展示一个场景练习：挖空版 + 可展开的原句（原句可点 🔊 朗读整句）"""
+    st.markdown(f"**🎬 {scene_name}**")
+    for i, ex in enumerate(sents, 1):
+        st.markdown(f"{i}. {cloze(ex['en'], word)}")
+        st.caption(ex["zh"])
+    if st.toggle("👀 显示原句", key=f"show_{key}"):
+        for ex in sents:
+            tappable_sentence(ex["en"], ex["zh"])
+
+
 with tab_practice:
     if not book:
         st.info("先去收藏一些单词，才能开始场景练习哦～")
     else:
-        st.markdown("#### 💬 自定义场景练习")
+        st.markdown("#### 💬 场景练习")
         ai_key = get_ai_key()
 
         # 选词：从单词本选，或直接输入任意英文单词（不限于单词本）
@@ -979,40 +1009,32 @@ with tab_practice:
         pw_word = typed.strip() or (picked if picked != "—" else "")
 
         if not ai_key:
-            st.info("配置 AI 后可用自定义场景（见部署指南）")
+            st.info("配置 AI 后可用场景练习（见部署指南）")
         elif not pw_word:
             st.info("👆 从单词本选一个词，或直接输入要练习的英文单词")
         else:
             # 拿中文含义：单词本里有就用现成的，否则查一下
             src = book.get(pw_word) or cached_lookup(pw_word)
             zh = img_context(src) or pw_word
+            entry = book.get(pw_word)  # 在单词本里才把场景对话缓存进 Sheet
 
-            # 推荐场景：按词类型给几个相关的，用紧凑标签（一行搞定，不占地方）
-            pick_scene = st.pills(
-                "推荐场景", recommend_scenes(src),
-                selection_mode="single", label_visibility="collapsed")
+            # 自动为这个词最贴合的 2 个常见场景生成对话，不用手动选
+            for scene in recommend_scenes(src)[:2]:
+                with st.spinner(f"生成「{scene}」对话…"):
+                    sents = get_scene(pw_word, zh, scene, entry, ai_key)
+                if sents:
+                    render_scene(scene, sents, pw_word, key=f"{pw_word}|{scene}")
+                st.divider()
+
+            # 想练别的场景，自己输入
             custom = st.text_input(
-                "场景", placeholder="或自己输入场景，比如：教患者用助行器",
-                label_visibility="collapsed", key="scene_custom")
-            # 自己输入的优先，否则用点选的标签
-            scene = custom.strip() or (pick_scene or "")
-
-            if not scene.strip():
-                st.info("👆 点一个推荐场景，或自己输入一个")
-            else:
-                with st.spinner("AI 正在按你的场景编写对话..."):
-                    sents = cached_scene(pw_word, zh, scene.strip(), ai_key,
-                                         ai_dialogue.SCENE_VERSION)
-                if not sents:
-                    st.warning("这个场景没生成出来，换个说法再试试～")
+                "想练别的场景？自己输入",
+                placeholder="如：教患者用助行器", key="scene_custom")
+            if custom.strip():
+                with st.spinner("按你的场景生成对话…"):
+                    sents = get_scene(pw_word, zh, custom.strip(), entry, ai_key)
+                if sents:
+                    render_scene(custom.strip(), sents, pw_word,
+                                 key=f"{pw_word}|custom")
                 else:
-                    # 场景对话显示全部（一整段），不再砍成 2-3 句
-                    # 挖空版不配朗读——听整句会把答案念出来
-                    for i, ex in enumerate(sents, 1):
-                        st.markdown(f"{i}. {cloze(ex['en'], pw_word)}")
-                        st.caption(ex["zh"])
-                    if st.toggle("👀 显示原句", key="show_cloze_answer"):
-                        st.divider()
-                        # 原句版：整句显示，点 🔊 朗读整句
-                        for ex in sents:
-                            tappable_sentence(ex["en"], ex["zh"])
+                    st.warning("这个场景没生成出来，换个说法再试试～")

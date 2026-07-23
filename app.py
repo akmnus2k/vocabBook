@@ -34,6 +34,13 @@ st.markdown("""
 div[data-testid="stMainBlockContainer"], .block-container {
     padding-top: 2.2rem !important;
 }
+/* 单词本列表整行文本按钮：左对齐、贴合行高，像列表而不是居中的按钮。
+   真正控制居中的是按钮内层的 flex 容器，所以要一并设成 flex-start */
+button[kind="tertiary"], button[kind="tertiary"] > div {
+    justify-content: flex-start !important;
+    text-align: left !important;
+}
+button[kind="tertiary"] { padding: 0.15rem 0.25rem !important; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -804,22 +811,19 @@ with tab_book:
         with st.expander(f"🎧 循环播放（{len(entries)} 个单词）"):
             audio_player(entries)
 
-        # 每行：点单词发音；点右边的释义打开详情内页（内页里可左右切换单词）
+        # 每行整体是一个文本按钮：加粗单词 + 紧挨着的灰色释义，点整行打开详情。
+        # 用单个按钮（而不是两列）——释义就能紧跟单词，不会因列宽固定留下大空隙。
         sorted_words = [e["word"] for e in entries]
         for i, e in enumerate(entries):
-            c_word, c_def = st.columns([3, 2], vertical_alignment="center")
-            with c_word:
-                clickable_word(e["word"], size=19)
-            with c_def:
-                brief = simplify_def(e["defs"][0], 2) if e["defs"] else "查看详情"
-                brief = brief[:9] + "…" if len(brief) > 9 else brief
-                # tertiary 文本按钮：看着像释义文字，点它打开详情
-                if st.button(brief, key=f"def_{e['word']}", type="tertiary",
-                             use_container_width=True):
-                    st.session_state.dlg_words = sorted_words
-                    st.session_state.dlg_idx = i
-                    st.session_state.dlg_open = True
-                    st.rerun()
+            brief = simplify_def(e["defs"][0], 2) if e["defs"] else "查看详情"
+            brief = brief[:14] + "…" if len(brief) > 14 else brief
+            label = f"**{e['word']}**　:gray[{brief}]"
+            if st.button(label, key=f"row_{e['word']}", type="tertiary",
+                         use_container_width=True):
+                st.session_state.dlg_words = sorted_words
+                st.session_state.dlg_idx = i
+                st.session_state.dlg_open = True
+                st.rerun()
 
 
 # ============ 复习 ============

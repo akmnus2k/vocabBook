@@ -538,7 +538,10 @@ def tappable_sentence(en, zh, prefix=""):
 
 
 def reveal_details(entry, defs=True, example=True):
-    """揭晓答案时展示的详情：中文释义 / 英文释义 / 例句 / 图片"""
+    """揭晓答案时展示的详情：英标 / 中文释义 / 英文释义 / 例句 / 图片"""
+    ph = entry.get("phone_uk") or entry.get("phone_us")
+    if ph:
+        st.caption(f"英 /{ph}/")
     if defs:
         for d in concise_defs(entry["defs"]):
             st.markdown(f"- {d}")

@@ -361,8 +361,9 @@ _PLAYER_HTML = r"""<meta name="referrer" content="no-referrer">
        padding:14px 16px;color:#3D4F5C;text-align:center}
  #now{font-size:30px;font-weight:700;line-height:1.2;white-space:nowrap;
       overflow:hidden;text-overflow:ellipsis}
- #sub{font-size:14px;color:#5B7183;min-height:20px;margin-top:2px;white-space:nowrap;
-      overflow:hidden;text-overflow:ellipsis}
+ #sub{font-size:14px;color:#5B7183;min-height:20px;margin:2px auto 0;line-height:1.35;
+      max-width:94%;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;
+      overflow:hidden}
  .pbtn{border:none;background:#CDE7F5;color:#2C3E4C;border-radius:50%;width:42px;height:42px;
        font-size:18px;cursor:pointer;vertical-align:middle;margin:0 5px}
  .pbtn.big{width:54px;height:54px;font-size:24px;background:#A8D4EA}
@@ -479,7 +480,8 @@ def audio_player(entries):
         playlist.append(item)
     html = _PLAYER_HTML.replace("__PLAYLIST__",
                                 json.dumps(playlist, ensure_ascii=False))
-    components.html(html, height=210)
+    # 高度留够：例句可换行到 3 行，窄屏也不会被截成"…"
+    components.html(html, height=260)
 
 
 # 复习题型：cn 看词想义、en 看义猜词、cloze 例句填空、listen 听音辨词

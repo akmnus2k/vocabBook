@@ -34,17 +34,13 @@ st.markdown("""
 div[data-testid="stMainBlockContainer"], .block-container {
     padding-top: 2.2rem !important;
 }
-/* 单词本列表释义按钮：左对齐、贴合行高，左侧一条竖线把它和单词区分开。
+/* 单词本列表释义按钮：左对齐、贴合行高，像列表而不是居中的按钮。
    真正控制居中的是按钮内层的 flex 容器，所以要一并设成 flex-start */
 button[kind="tertiary"], button[kind="tertiary"] > div {
     justify-content: flex-start !important;
     text-align: left !important;
 }
-button[kind="tertiary"] {
-    padding: 0.15rem 0.7rem !important;
-    border-left: 2px solid #CDE7F5 !important;
-    border-radius: 0 !important;
-}
+button[kind="tertiary"] { padding: 0.15rem 0.4rem !important; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -815,9 +811,8 @@ with tab_book:
         with st.expander(f"🎧 循环播放（{len(entries)} 个单词）"):
             audio_player(entries)
 
-        # 每行分两个区，中间一条竖线切分：左区是单词（点击发音），右区是释义
-        # （点击打开详情）。发音走纯浏览器端、跳详情要通知后端，本来就是两套
-        # 机制——两列正好一边管一件事。单词列收窄，让释义尽量挨着单词。
+        # 每行分两个区：左区单词点击发音（纯浏览器端），右区释义点击打开详情
+        # （要通知后端，只能用原生按钮）。单词列收窄，让释义尽量挨着单词。
         sorted_words = [e["word"] for e in entries]
         for i, e in enumerate(entries):
             c_word, c_def = st.columns([2, 3], vertical_alignment="center")
@@ -826,7 +821,6 @@ with tab_book:
             with c_def:
                 brief = simplify_def(e["defs"][0], 2) if e["defs"] else "查看详情"
                 brief = brief[:16] + "…" if len(brief) > 16 else brief
-                # 释义按钮左边框 = 那条竖线；点它打开详情
                 if st.button(brief, key=f"def_{e['word']}", type="tertiary",
                              use_container_width=True):
                     st.session_state.dlg_words = sorted_words

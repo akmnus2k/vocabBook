@@ -503,9 +503,10 @@ def tappable_sentence(en, zh, prefix=""):
     喇叭走"有道真人音优先、百度合成音兜底"——整句一般走百度。
     prefix 参数保留是为了兼容旧调用，现已不再需要。
     """
-    c_spk, c_txt = st.columns([1, 9], vertical_alignment="center")
+    # 喇叭对齐例句第一行（top）：例句换行时喇叭不会跑到中间那行去
+    c_spk, c_txt = st.columns([1, 9], vertical_alignment="top")
     with c_spk:
-        speaker_only(en, size=20, autoplay=False, sentence=True)
+        speaker_only(en, size=18, autoplay=False, sentence=True)
     with c_txt:
         st.markdown(f"**{en}**")
         st.caption(zh)
@@ -573,20 +574,6 @@ def word_detail_dialog():
         st.info("这个词已经不在单词本里了")
         return
 
-    # 左右切换
-    nav_l, nav_mid, nav_r = st.columns([1, 2, 1])
-    if nav_l.button("⬅️", disabled=(idx == 0), use_container_width=True):
-        st.session_state.dlg_idx = idx - 1
-        st.session_state.dlg_open = True
-        st.rerun()
-    nav_mid.markdown(
-        f"<div style='text-align:center;color:#7A8B96;padding-top:6px'>"
-        f"{idx + 1} / {len(words)}</div>", unsafe_allow_html=True)
-    if nav_r.button("➡️", disabled=(idx == len(words) - 1), use_container_width=True):
-        st.session_state.dlg_idx = idx + 1
-        st.session_state.dlg_open = True
-        st.rerun()
-
     clickable_word(e["word"], size=24)
     ph = e.get("phone_uk") or e.get("phone_us")
     if ph:
@@ -601,6 +588,21 @@ def word_detail_dialog():
     st.caption(f"熟练度 {stars}　|　收藏于 {e['added']}　|　下次复习 {e['next_review']}")
     if st.button("🗑️ 从单词本移除", use_container_width=True):
         storage.remove_word(book, e["word"])
+        st.rerun()
+
+    # 最下排：左右切换上一个/下一个单词
+    st.divider()
+    nav_l, nav_mid, nav_r = st.columns([1, 2, 1], vertical_alignment="center")
+    if nav_l.button("⬅️", disabled=(idx == 0), use_container_width=True):
+        st.session_state.dlg_idx = idx - 1
+        st.session_state.dlg_open = True
+        st.rerun()
+    nav_mid.markdown(
+        f"<div style='text-align:center;color:#7A8B96'>{idx + 1} / {len(words)}</div>",
+        unsafe_allow_html=True)
+    if nav_r.button("➡️", disabled=(idx == len(words) - 1), use_container_width=True):
+        st.session_state.dlg_idx = idx + 1
+        st.session_state.dlg_open = True
         st.rerun()
 
 

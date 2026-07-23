@@ -1057,6 +1057,12 @@ with tab_practice:
             zh = img_context(src) or pw_word
             entry = book.get(pw_word)  # 在单词本里才把场景对话缓存进 Sheet
 
+            # 相关图片：看图记词更直观（和查词页同一套搜图逻辑）
+            kq = get_image_query(pw_word, zh, entry, ai_key) or zh
+            imgs = cached_images(kq, "")
+            if imgs:
+                st.image(imgs[0], width=260)
+
             # 自动为这个词最贴合的 2 个常见场景生成对话，不用手动选
             for scene in recommend_scenes(src)[:2]:
                 with st.spinner(f"生成「{scene}」对话…"):

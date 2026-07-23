@@ -245,9 +245,10 @@ def start_sweep(book, api_key):
                          args=(todo, api_key, ver), daemon=True).start()
 
 
-def get_zhipu_key():
+def get_ai_key():
+    """AI 例句/对话生成用的 key：优先 Kimi，没配就退回智谱"""
     try:
-        return st.secrets.get("zhipu_api_key", "")
+        return st.secrets.get("kimi_api_key", "") or st.secrets.get("zhipu_api_key", "")
     except Exception:
         return ""
 
@@ -562,7 +563,7 @@ book = st.session_state.book
 history = st.session_state.history
 
 # 会话开始时后台补齐存量单词的诊室对话，让练习尽量都秒开
-start_sweep(book, get_zhipu_key())
+start_sweep(book, get_ai_key())
 
 
 @st.dialog("词条详情")
@@ -697,7 +698,7 @@ with tab_search:
                     storage.add_word(book, info, imgs_for_save)
                     # 收藏的同时后台把诊室对话先生成好，之后练习秒开
                     start_pregen(info["word"], img_context(info) or info["word"],
-                                 get_zhipu_key())
+                                 get_ai_key())
                     st.toast(f"「{info['word']}」已收藏！", icon="⭐")
                     st.rerun()
 
@@ -716,7 +717,7 @@ with tab_search:
             with st.spinner("加载例句..."):
                 clinic = get_dialogues(
                     info["word"], img_context(info) or info["word"],
-                    entry_in_book, get_zhipu_key())
+                    entry_in_book, get_ai_key())
             if clinic:
                 for i, ex in enumerate(clinic[:2]):
                     tappable_sentence(ex["en"], ex["zh"], prefix=f"se{i}")
@@ -969,7 +970,7 @@ with tab_practice:
         st.info("先去收藏一些单词，才能开始场景练习哦～")
     else:
         st.markdown("#### 💬 自定义场景练习")
-        zhipu_key = get_zhipu_key()
+        ai_key = get_ai_key()
 
         # 选词：从单词本选，或直接输入任意英文单词（不限于单词本）
         c1, c2 = st.columns(2)
@@ -977,7 +978,7 @@ with tab_practice:
         typed = c2.text_input("或输入英文单词", placeholder="如 gait")
         pw_word = typed.strip() or (picked if picked != "—" else "")
 
-        if not zhipu_key:
+        if not ai_key:
             st.info("配置 AI 后可用自定义场景（见部署指南）")
         elif not pw_word:
             st.info("👆 从单词本选一个词，或直接输入要练习的英文单词")
@@ -1000,7 +1001,7 @@ with tab_practice:
                 st.info("👆 点一个推荐场景，或自己输入一个")
             else:
                 with st.spinner("AI 正在按你的场景编写对话..."):
-                    sents = cached_scene(pw_word, zh, scene.strip(), zhipu_key,
+                    sents = cached_scene(pw_word, zh, scene.strip(), ai_key,
                                          ai_dialogue.SCENE_VERSION)
                 if not sents:
                     st.warning("这个场景没生成出来，换个说法再试试～")

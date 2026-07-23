@@ -811,19 +811,24 @@ with tab_book:
         with st.expander(f"🎧 循环播放（{len(entries)} 个单词）"):
             audio_player(entries)
 
-        # 每行整体是一个文本按钮：加粗单词 + 紧挨着的灰色释义，点整行打开详情。
-        # 用单个按钮（而不是两列）——释义就能紧跟单词，不会因列宽固定留下大空隙。
+        # 每行：左侧小喇叭点击发音（纯浏览器端），右侧"单词 + 灰色释义"是一个
+        # 文本按钮，点击打开详情（要通知 Streamlit 后端，只能用原生按钮）。
+        # 发音和跳详情是两套机制，分成喇叭 + 行按钮两个元素各管一件事。
         sorted_words = [e["word"] for e in entries]
         for i, e in enumerate(entries):
-            brief = simplify_def(e["defs"][0], 2) if e["defs"] else "查看详情"
-            brief = brief[:14] + "…" if len(brief) > 14 else brief
-            label = f"**{e['word']}**　:gray[{brief}]"
-            if st.button(label, key=f"row_{e['word']}", type="tertiary",
-                         use_container_width=True):
-                st.session_state.dlg_words = sorted_words
-                st.session_state.dlg_idx = i
-                st.session_state.dlg_open = True
-                st.rerun()
+            c_spk, c_row = st.columns([1, 11], vertical_alignment="center")
+            with c_spk:
+                speaker_only(e["word"], size=17, autoplay=False)
+            with c_row:
+                brief = simplify_def(e["defs"][0], 2) if e["defs"] else "查看详情"
+                brief = brief[:14] + "…" if len(brief) > 14 else brief
+                label = f"**{e['word']}**　:gray[{brief}]"
+                if st.button(label, key=f"row_{e['word']}", type="tertiary",
+                             use_container_width=True):
+                    st.session_state.dlg_words = sorted_words
+                    st.session_state.dlg_idx = i
+                    st.session_state.dlg_open = True
+                    st.rerun()
 
 
 # ============ 复习 ============

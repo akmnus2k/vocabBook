@@ -246,9 +246,9 @@ def start_sweep(book, api_key):
 
 
 def get_ai_key():
-    """AI 例句/对话生成用的 key：优先 Kimi，没配就退回智谱"""
+    """AI 例句/对话生成用的 Kimi key"""
     try:
-        return st.secrets.get("kimi_api_key", "") or st.secrets.get("zhipu_api_key", "")
+        return st.secrets.get("kimi_api_key", "")
     except Exception:
         return ""
 

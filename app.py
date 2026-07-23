@@ -595,7 +595,13 @@ def word_detail_dialog():
         st.info("这个词已经不在单词本里了")
         return
 
-    clickable_word(e["word"], size=24)
+    # 单词在左，右上角一个小垃圾桶移除（窄小、不占整行，避免误触）
+    c_word, c_del = st.columns([5, 1], vertical_alignment="center")
+    with c_word:
+        clickable_word(e["word"], size=24)
+    if c_del.button("🗑️", key="del_word", help="从单词本移除"):
+        storage.remove_word(book, e["word"])
+        st.rerun()
     ph = e.get("phone_uk") or e.get("phone_us")
     if ph:
         st.caption(f"英 /{ph}/")
@@ -609,9 +615,6 @@ def word_detail_dialog():
         tappable_sentence(ex["en"], ex["zh"], prefix="dlg")
     stars = "🌟" * e["level"] + "☆" * (len(storage.INTERVALS) - 1 - e["level"])
     st.caption(f"熟练度 {stars}　|　收藏于 {e['added']}　|　下次复习 {e['next_review']}")
-    if st.button("🗑️ 从单词本移除", use_container_width=True):
-        storage.remove_word(book, e["word"])
-        st.rerun()
 
     # 最下排：左右切换上一个/下一个单词
     nav_l, nav_mid, nav_r = st.columns([1, 2, 1], vertical_alignment="center")

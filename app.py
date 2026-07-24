@@ -600,8 +600,6 @@ def reveal_details(entry, defs=True, example=True):
     exs = entry.get("dialogues") or entry.get("examples")
     if example and exs:
         tappable_sentence(exs[0]["en"], exs[0]["zh"], prefix="rv")
-    if entry.get("images"):
-        st.image(entry["images"][0], width=260)
 
 
 def refocus_searchbox():

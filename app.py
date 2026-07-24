@@ -132,11 +132,18 @@ _CONDITION_KWS = ["症", "炎", "痛", "瘫", "麻痹", "损伤", "凸", "畸形
                   "功能障碍", "撕裂", "扭伤", "拉伤"]
 
 
+# 医学词但不是病症本身——含这些就不显示治疗方案（禁忌证、适应证、预后等）
+_NOT_CONDITION_KWS = ["禁忌", "适应证", "适应症", "预后", "病因", "病理",
+                      "诊断", "疗法", "疗效", "征象", "体征"]
+
+
 def is_condition(info):
     """判断是不是病症/诊断类的词（这类才配显示物理治疗方案）"""
     t = "".join(info.get("defs", []))
-    # 器械、纯解剖部位不算病症；含病症关键词才算
+    # 器械、纯解剖部位、医学概念词（禁忌证等）都不算病症
     if any(k in t for k in ["杖", "器", "仪", "支具", "轮椅", "护具"]):
+        return False
+    if any(k in t for k in _NOT_CONDITION_KWS):
         return False
     return any(k in t for k in _CONDITION_KWS)
 

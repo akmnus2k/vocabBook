@@ -427,12 +427,19 @@ def _audio_js(text, sentence=False):
         srcs = [dict_api.audio_url(text), dict_api.google_tts_url(text),
                 dict_api.sentence_audio_url(text)]
     srcs_js = json.dumps(srcs)
-    return (f"var s={srcs_js},i=0;"
-            f"function n(){{if(i>=s.length){{"
-            f"var u=new SpeechSynthesisUtterance({text_js});u.lang='en-GB';"
-            f"speechSynthesis.cancel();speechSynthesis.speak(u);return;}}"
-            f"var a=new Audio(s[i]);i=i+1;a.onerror=n;"
-            f"a.play().catch(function(){{}});}}n();")
+    # W = 页面顶层窗口，所有单词的发音共享它上面的"当前音频 __vbA"和语音队列，
+    # 每次点击先停掉上一个再播新的，避免多点几下音频叠在一起一直念。
+    # （各单词在独立 iframe，只有借顶层窗口才能互相停下来；跨源时退回本 iframe。）
+    return (
+        "var W;try{W=window.top;W.document;}catch(e){W=window;}"
+        "if(W.__vbA){try{W.__vbA.pause();}catch(e){}}"
+        "try{W.speechSynthesis.cancel();}catch(e){}"
+        f"var s={srcs_js},i=0;"
+        "function n(){if(i>=s.length){"
+        f"var u=new W.SpeechSynthesisUtterance({text_js});u.lang='en-GB';"
+        "try{W.speechSynthesis.speak(u);}catch(e){}return;}"
+        "var a=new Audio(s[i]);i=i+1;W.__vbA=a;a.onerror=n;"
+        "a.play().catch(function(){});}n();")
 
 
 def clickable_word(word, sub="", size=26, autoplay=False):

@@ -118,6 +118,32 @@ def pt_sentences(word: str, limit: int = 5):
     return results
 
 
+def get_commons_images(word: str, n: int = 5):
+    """从 Wikimedia Commons 搜医学示意图：英文词直接搜，图源权威（Blausen 等），
+    避开中文歧义（如 adhesion 的"粘附/粘连"），返回缩略图地址（SVG 也已转成 PNG）"""
+    try:
+        r = requests.get(
+            "https://commons.wikimedia.org/w/api.php",
+            params={
+                "action": "query", "format": "json", "generator": "search",
+                "gsrsearch": word, "gsrnamespace": "6", "gsrlimit": 10,
+                "prop": "imageinfo", "iiprop": "url|mime", "iiurlwidth": "500",
+            },
+            headers=HEADERS, timeout=12,
+        )
+        pages = r.json().get("query", {}).get("pages", {})
+        # 按搜索相关性排序
+        ordered = sorted(pages.values(), key=lambda p: p.get("index", 99))
+        urls = []
+        for p in ordered:
+            ii = (p.get("imageinfo") or [{}])[0]
+            if ii.get("mime", "").startswith("image") and ii.get("thumburl"):
+                urls.append(ii["thumburl"])
+        return urls[:n]
+    except Exception:
+        return []
+
+
 def get_images(word: str, n: int = 3, context: str = "", first: int = 1):
     """从 360 图片搜索取相关图片（返回的 thumb 在 360 自家 CDN 上，加载稳定）
 

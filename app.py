@@ -163,6 +163,23 @@ def cached_images(word, context="", first=1):
 
 
 @st.cache_data(ttl=7 * 86400, show_spinner=False)
+def cached_commons(word):
+    # Wikimedia Commons 医学图，一次取几张，配合"换一张"循环看
+    return dict_api.get_commons_images(word, n=5)
+
+
+def word_images(en_word, zh_term):
+    """合并两个图源，"换一张"可在其间循环：
+    Commons（英文、权威医学图，覆盖大多数医学词）排前，
+    360 中文搜索的一张排后（兜底，且能救回 lordosis/quadriceps 这类英文同名翻车的词）"""
+    imgs = list(cached_commons(en_word))
+    for u in cached_images(zh_term or en_word, ""):  # 360 中文，1 张
+        if u not in imgs:
+            imgs.append(u)
+    return imgs
+
+
+@st.cache_data(ttl=7 * 86400, show_spinner=False)
 def cached_image_query(word, zh, api_key, ver):
     return ai_dialogue.image_query(word, zh, api_key)
 
@@ -812,16 +829,14 @@ with tab_search:
                         st.markdown(f"**{ex['en']}**")
                         st.caption(ex["zh"])
 
-            # 相关图片：直接用纯医学中文词搜（实测比 AI 加工过的搜索词更准，
-            # AI 爱加"示意图/康复训练"这类修饰反而搜偏），只取一张
-            kq = img_context(info) or info["word"]
-            first = st.session_state.get(f"img_first_{target}", 1)
-            imgs = cached_images(kq, "", first)
+            # 相关图片：Wikimedia Commons 权威医学图优先，360 中文兜底
+            imgs = word_images(info["word"], img_context(info))
             if imgs:
                 st.markdown("#### 相关图片")
-                st.image(imgs[0], width=260)
-                if st.button("🔄 换一张"):
-                    st.session_state[f"img_first_{target}"] = first + 1
+                idx = st.session_state.get(f"img_idx_{target}", 0) % len(imgs)
+                st.image(imgs[idx], width=260)
+                if len(imgs) > 1 and st.button("🔄 换一张"):
+                    st.session_state[f"img_idx_{target}"] = idx + 1
                     st.rerun()
 
     # 搜索历史：只显示今天查过的词（完整历史仍然都存着）

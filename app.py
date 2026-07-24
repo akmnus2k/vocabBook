@@ -829,16 +829,6 @@ with tab_search:
                         st.markdown(f"**{ex['en']}**")
                         st.caption(ex["zh"])
 
-            # 相关图片：Wikimedia Commons 权威医学图优先，360 中文兜底
-            imgs = word_images(info["word"], img_context(info))
-            if imgs:
-                st.markdown("#### 相关图片")
-                idx = st.session_state.get(f"img_idx_{target}", 0) % len(imgs)
-                st.image(imgs[idx], width=260)
-                if len(imgs) > 1 and st.button("🔄 换一张"):
-                    st.session_state[f"img_idx_{target}"] = idx + 1
-                    st.rerun()
-
     # 搜索历史：只显示今天查过的词（完整历史仍然都存着）
     today_items = [e for e in history.values()
                    if e.get("last") == storage.today_iso()]

@@ -711,24 +711,29 @@ def word_detail_dialog():
     ph = e.get("phone_uk") or e.get("phone_us")
     if ph:
         st.caption(f"英 /{ph}/")
-    for d in concise_defs(e["defs"]):
-        st.markdown(f"- {d}")
-    if e.get("en_defs"):
-        st.markdown(f"🗣️ *{e['en_defs'][0]}*")
-    # 优先 AI 诊室例句（翻译贴近场景、质量稳定），没有才退回有道例句库
-    exs = e.get("dialogues") or e.get("examples") or []
-    for ex in exs[:1]:
-        tappable_sentence(ex["en"], ex["zh"], prefix="dlg")
-    # 常见治疗方案：病症/诊断类词才有
-    if is_condition(e):
-        tx = get_treatment(e["word"], img_context(e) or e["word"], e, get_ai_key())
-        if tx:
-            st.markdown("**🩺 常见物理治疗方案**")
-            for t in tx:
-                st.markdown(f"- {t['en']}")
-                st.caption(t["zh"])
-    stars = "🌟" * e["level"] + "☆" * (len(storage.INTERVALS) - 1 - e["level"])
-    st.caption(f"熟练度 {stars}　|　收藏于 {e['added']}　|　下次复习 {e['next_review']}")
+    # 会变长的内容放进固定高度的滚动区——内容多就区内滚动，
+    # 这样下面的翻页按钮位置始终不变，连续翻词不用挪光标
+    with st.container(height=320):
+        for d in concise_defs(e["defs"]):
+            st.markdown(f"- {d}")
+        if e.get("en_defs"):
+            st.markdown(f"🗣️ *{e['en_defs'][0]}*")
+        # 优先 AI 诊室例句（翻译贴近场景、质量稳定），没有才退回有道例句库
+        exs = e.get("dialogues") or e.get("examples") or []
+        for ex in exs[:1]:
+            tappable_sentence(ex["en"], ex["zh"], prefix="dlg")
+        # 常见治疗方案：病症/诊断类词才有
+        if is_condition(e):
+            tx = get_treatment(e["word"], img_context(e) or e["word"],
+                               e, get_ai_key())
+            if tx:
+                st.markdown("**🩺 常见物理治疗方案**")
+                for t in tx:
+                    st.markdown(f"- {t['en']}")
+                    st.caption(t["zh"])
+        stars = "🌟" * e["level"] + "☆" * (len(storage.INTERVALS) - 1 - e["level"])
+        st.caption(f"熟练度 {stars}　|　收藏于 {e['added']}　"
+                   f"|　下次复习 {e['next_review']}")
 
     # 最下排：左右切换上一个/下一个单词
     nav_l, nav_mid, nav_r = st.columns([1, 2, 1], vertical_alignment="center")

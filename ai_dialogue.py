@@ -125,6 +125,24 @@ def generate_scene(word: str, zh: str, scene: str, api_key: str, n: int = 3):
                  api_key, n)
 
 
+# 治疗方案的版本号：改了 TREATMENT_PROMPT 就 +1，让缓存失效重新生成
+TREATMENT_VERSION = 1
+
+TREATMENT_PROMPT = """你是资深物理治疗师。针对病症/诊断「{word}」（中文：{zh}），\
+列出 3~4 条最常见的**物理治疗**处理方案（只讲 PT 能做的：手法、运动训练、\
+物理因子、宣教等，别写手术/药物）。每条一句话，简短、抓重点。
+
+只输出 JSON 数组，不要任何其他文字，每条中英对照，格式：
+[{{"en": "英文方案", "zh": "中文方案"}}]"""
+
+
+def generate_treatment(word: str, zh: str, api_key: str, n: int = 4):
+    """给病症/诊断词生成常见物理治疗方案（中英对照），失败返回 None"""
+    if not api_key:
+        return None
+    return _call(TREATMENT_PROMPT.format(word=word, zh=zh), api_key, n)
+
+
 # 图片搜索词的版本号：改了 IMG_QUERY_PROMPT 就 +1，让缓存失效重新生成
 IMG_QUERY_VERSION = 1
 

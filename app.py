@@ -125,6 +125,22 @@ def concise_defs(defs, n=2):
     return [simplify_def(d) for d in ordered[:n]]
 
 
+# 病症/诊断类的标志——释义里含这些字，才显示"常见治疗方案"
+_CONDITION_KWS = ["症", "炎", "痛", "瘫", "麻痹", "损伤", "凸", "畸形", "不张",
+                  "栓", "梗", "溃疡", "骨折", "挛缩", "粘连", "痉挛", "水肿",
+                  "萎缩", "劳损", "脱位", "侧弯", "综合征", "病", "紊乱",
+                  "功能障碍", "撕裂", "扭伤", "拉伤"]
+
+
+def is_condition(info):
+    """判断是不是病症/诊断类的词（这类才配显示物理治疗方案）"""
+    t = "".join(info.get("defs", []))
+    # 器械、纯解剖部位不算病症；含病症关键词才算
+    if any(k in t for k in ["杖", "器", "仪", "支具", "轮椅", "护具"]):
+        return False
+    return any(k in t for k in _CONDITION_KWS)
+
+
 def recommend_scenes(src):
     """按单词类型推荐相关场景（器械/动作类/其它），避免给抽象词推"教用拐杖"这种"""
     t = "".join(src.get("defs", []))
@@ -220,6 +236,34 @@ def cached_ai_dialogues(word, zh, api_key, prompt_ver):
 @st.cache_data(ttl=7 * 86400, show_spinner=False)
 def cached_scene(word, zh, scene, api_key, ver):
     return ai_dialogue.generate_scene(word, zh, scene, api_key)
+
+
+# 常见治疗方案：病症/诊断词才生成，和对话一样存进词条/历史，避免每次重生成
+@st.cache_data(ttl=7 * 86400, show_spinner=False)
+def cached_treatment(word, zh, api_key, ver):
+    return ai_dialogue.generate_treatment(word, zh, api_key)
+
+
+def get_treatment(word, zh, entry, api_key, hist_entry=None):
+    """拿一个病症词的常见治疗方案：已存好的秒回，否则生成并存进词条/历史"""
+    ver = ai_dialogue.TREATMENT_VERSION
+    for e in (entry, hist_entry):
+        if e and e.get("treatment") and e.get("treatment_ver") == ver:
+            return e["treatment"]
+    if not api_key:
+        return None
+    t = cached_treatment(word, zh, api_key, ver)
+    if not t:
+        return None
+    if entry is not None:
+        entry["treatment"] = t
+        entry["treatment_ver"] = ver
+        storage.save_book(book)
+    if hist_entry is not None:
+        hist_entry["treatment"] = t
+        hist_entry["treatment_ver"] = ver
+        storage.save_history(history)
+    return t
 
 
 def get_scene(word, zh, scene, entry, api_key):
@@ -668,6 +712,14 @@ def word_detail_dialog():
     exs = e.get("dialogues") or e.get("examples") or []
     for ex in exs[:1]:
         tappable_sentence(ex["en"], ex["zh"], prefix="dlg")
+    # 常见治疗方案：病症/诊断类词才有
+    if is_condition(e):
+        tx = get_treatment(e["word"], img_context(e) or e["word"], e, get_ai_key())
+        if tx:
+            st.markdown("**🩺 常见物理治疗方案**")
+            for t in tx:
+                st.markdown(f"- {t['en']}")
+                st.caption(t["zh"])
     stars = "🌟" * e["level"] + "☆" * (len(storage.INTERVALS) - 1 - e["level"])
     st.caption(f"熟练度 {stars}　|　收藏于 {e['added']}　|　下次复习 {e['next_review']}")
 
@@ -826,6 +878,19 @@ with tab_search:
                     for ex in info["examples"]:
                         st.markdown(f"**{ex['en']}**")
                         st.caption(ex["zh"])
+
+            # 常见治疗方案：只对病症/诊断类的词显示
+            if is_condition(info):
+                with st.spinner("加载治疗方案..."):
+                    tx = get_treatment(
+                        info["word"], img_context(info) or info["word"],
+                        entry_in_book, get_ai_key(),
+                        hist_entry=history.get(info["word"]))
+                if tx:
+                    st.markdown("#### 🩺 常见物理治疗方案")
+                    for t in tx:
+                        st.markdown(f"- {t['en']}")
+                        st.caption(t["zh"])
 
     # 搜索历史：只显示今天查过的词（完整历史仍然都存着）
     today_items = [e for e in history.values()
